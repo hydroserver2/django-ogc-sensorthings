@@ -1,11 +1,9 @@
-from uuid import UUID
-from typing import TYPE_CHECKING, Literal, Union, List
-from pydantic import Field, AnyHttpUrl, root_validator
+from typing import TYPE_CHECKING, Literal, Union, List, Dict, Optional
+from pydantic import Field, ConfigDict
 from ninja import Schema
-from sensorthings.schemas import BaseListResponse, BaseGetResponse, BasePostBody, BasePatchBody, EntityId, \
-    NestedEntity, ListQueryParams
-from sensorthings.extras.iso_types import ISOTime, ISOInterval
-from sensorthings.validators import allow_partial
+from sensorthings.schemas import (BaseComponent, BaseListResponse, BaseGetResponse, BasePostBody, BasePatchBody,
+                                  EntityId)
+from sensorthings.types import ISOTimeString, ISOIntervalString, AnyHttpUrlString
 
 if TYPE_CHECKING:
     from sensorthings.components.datastreams.schemas import Datastream
@@ -22,92 +20,151 @@ observationTypes = Literal[
 
 
 observationComponents = Literal[
-    'id', 'phenomenonTime', 'result', 'resultTime', 'resultQuality', 'validTime', 'parameters', 'FeatureOfInterest/id'
+    '@iot.id', 'phenomenonTime', 'result', 'resultTime', 'resultQuality', 'validTime', 'parameters',
+    'FeatureOfInterest/id'
 ]
-
-observationResultFormats = Literal['dataArray']
 
 
 class ObservationFields(Schema):
-    phenomenon_time: Union[ISOTime, ISOInterval] = Field(..., alias='phenomenonTime')
-    result: float
-    result_time: Union[ISOTime, None] = Field(None, alias='resultTime')
-    result_quality: dict = Field({}, alias='resultQuality')
-    valid_time: Union[ISOInterval, None] = Field(None, alias='validTime')
-    parameters: dict = {}
+    """
+    A schema representing the fields of an observation.
+
+    Attributes
+    ----------
+    phenomenon_time : Union[ISOTimeString, ISOIntervalString]
+        The time when the observation phenomenon occurred.
+    result : float
+        The result of the observation.
+    result_time : Union[ISOTimeString, None], optional
+        The time when the observation result was generated.
+    result_quality : dict
+        The quality of the observation result.
+    valid_time : Union[ISOIntervalString, None], optional
+        The time period during which the observation result is valid.
+    parameters : dict
+        Additional parameters for the observation.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    phenomenon_time: Union[ISOTimeString, ISOIntervalString] = Field(..., alias='phenomenonTime')
+    result: float = Field(..., alias='result')
+    result_time: Optional[ISOTimeString] = Field(None, alias='resultTime')
+    result_quality: Optional[dict] = Field(None, alias='resultQuality')
+    valid_time: Optional[ISOIntervalString] = Field(None, alias='validTime')
+    parameters: Optional[dict] = Field(None, alias='parameters')
 
 
 class ObservationRelations(Schema):
-    datastream: 'Datastream'
-    feature_of_interest: 'FeatureOfInterest'
+    """
+    A schema representing the relations of an observation to other components.
+
+    Attributes
+    ----------
+    datastream : 'Datastream'
+        The datastream associated with the observation.
+    feature_of_interest : 'FeatureOfInterest'
+        The feature of interest associated with the observation.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    datastream: 'Datastream' = Field(
+        ..., alias='Datastream', json_schema_extra={'relationship': 'many_to_one', 'back_ref': 'datastream_id'}
+    )
+    feature_of_interest: 'FeatureOfInterest' = Field(
+        ..., alias='FeatureOfInterest',
+        json_schema_extra={'relationship': 'many_to_one', 'back_ref': 'feature_of_interest_id'}
+    )
 
 
-class Observation(ObservationFields, ObservationRelations):
-    pass
+class Observation(BaseComponent, ObservationFields, ObservationRelations):
+    """
+    A schema representing an observation.
+
+    This class combines the fields and relations of an observation, and extends the BaseComponent class.
+    """
+
+    model_config = ConfigDict(json_schema_extra={'name_ref': ('Observations', 'observation', 'observations')})
 
 
 class ObservationPostBody(BasePostBody, ObservationFields):
-    datastream: Union[EntityId, NestedEntity] = Field(
-        ..., alias='Datastream', nested_class='DatastreamPostBody'
+    """
+    A schema for the body of a POST request to create a new observation.
+
+    Attributes
+    ----------
+    datastream : Union[EntityId]
+        The ID of the datastream associated with the observation.
+    feature_of_interest : Union[EntityId, None], optional
+        The ID of the feature of interest associated with the observation.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    datastream: Union[EntityId] = Field(
+        ..., alias='Datastream', json_schema_extra={'nested_class': 'DatastreamPostBody'}
     )
-    feature_of_interest: Union[EntityId, NestedEntity, None] = Field(
-        None, alias='FeatureOfInterest', nested_class='FeatureOfInterestPostBody'
+    feature_of_interest: Union[EntityId, None] = Field(
+        None, alias='FeatureOfInterest', json_schema_extra={'nested_class': 'FeatureOfInterestPostBody'}
     )
 
 
-@allow_partial
 class ObservationPatchBody(BasePatchBody, ObservationFields):
-    datastream: EntityId = Field(..., alias='Datastream')
-    feature_of_interest: EntityId = Field(..., alias='FeatureOfInterest')
+    """
+    A schema for the body of a PATCH request to update an existing observation.
+
+    Attributes
+    ----------
+    datastream : Optional[EntityId], optional
+        The ID of the datastream associated with the observation.
+    feature_of_interest : Optional[EntityId], optional
+        The ID of the feature of interest associated with the observation.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    datastream: Optional[EntityId] = Field(None, alias='Datastream')
+    feature_of_interest: Optional[EntityId] = Field(None, alias='FeatureOfInterest')
 
 
-@allow_partial
 class ObservationGetResponse(ObservationFields, BaseGetResponse):
-    datastream_link: AnyHttpUrl = Field(None, alias='Datastream@iot.navigationLink')
-    datastream_rel: NestedEntity = Field(None, alias='Datastream', nested_class='DatastreamGetResponse')
-    feature_of_interest_link: AnyHttpUrl = Field(None, alias='FeatureOfInterest@iot.navigationLink')
-    feature_of_interest_rel: NestedEntity = Field(
-        None,
-        alias='FeatureOfInterest',
-        nested_class='FeatureOfInterestGetResponse'
-    )
+    """
+    A schema for the response of a GET request for an observation.
 
-    @root_validator(pre=False)
-    def data_array_validator(cls, values):
-        assert any(values.values())
-        return values
+    Attributes
+    ----------
+    datastream_link : AnyHttpUrlString, optional
+        The navigation link for the datastream associated with the observation.
+    datastream_rel : Dict, optional
+        The relationship details for the datastream associated with the observation.
+    feature_of_interest_link : AnyHttpUrlString, optional
+        The navigation link for the feature of interest associated with the observation.
+    feature_of_interest_rel : Dict, optional
+        The relationship details for the feature of interest associated with the observation.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    datastream_link: AnyHttpUrlString = Field(None, alias='Datastream@iot.navigationLink')
+    datastream_rel: Dict = Field(
+        None, alias='Datastream', json_schema_extra={'nested_class': 'DatastreamGetResponse'}
+    )
+    feature_of_interest_link: AnyHttpUrlString = Field(None, alias='FeatureOfInterest@iot.navigationLink')
+    feature_of_interest_rel: Dict = Field(
+        None, alias='FeatureOfInterest',
+        json_schema_extra={'nested_class': 'FeatureOfInterestGetResponse'}
+    )
 
 
 class ObservationListResponse(BaseListResponse):
+    """
+    A schema for the response of a GET request for a list of observations.
+
+    Attributes
+    ----------
+    value : List[ObservationGetResponse]
+        The list of observations.
+    """
+
     value: List[ObservationGetResponse]
-
-
-class ObservationDataArrayFields(ObservationFields):
-    datastream_id: Union[UUID, str] = Field(..., alias='Datastream/id')
-    feature_of_interest_id: Union[UUID, str] = Field(None, alias='FeatureOfInterest/id')
-
-    class Config:
-        allow_population_by_field_name = True
-
-
-class ObservationDataArray(Schema):
-    datastream: AnyHttpUrl = Field(None, alias='Datastream@iot.navigationLink')
-    components: List[observationComponents]
-    data_array: List[list] = Field(..., alias='dataArray')
-
-    class Config:
-        allow_population_by_field_name = True
-
-
-class ObservationDataArrayBody(Schema):
-    datastream: EntityId = Field(..., alias='Datastream')
-    components: List[observationComponents]
-    data_array: List[list] = Field(..., alias='dataArray')
-
-
-class ObservationDataArrayResponse(BaseListResponse):
-    value: List[ObservationDataArray]
-
-
-class ObservationParams(ListQueryParams):
-    result_format: Union[observationResultFormats, None] = Field(None, alias='$resultFormat')

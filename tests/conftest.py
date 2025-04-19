@@ -1,13 +1,21 @@
 import os
 import sys
-
-
-ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(__file__))))
-sys.path.insert(0, ROOT)
-sys.path.insert(0, os.path.join(ROOT, "tests/test_project"))
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "test_project.settings")
-
 import django
+import pytest
+from pathlib import Path
 
 
-django.setup()
+# Determine the root directory of the project
+ROOT_DIR = Path(__file__).resolve().parent.parent
+
+# Add the project directory and the Django project directory to the sys.path
+sys.path.insert(0, str(ROOT_DIR))  # Root directory of the project
+sys.path.insert(0, str(ROOT_DIR / 'example'))  # Django project directory
+
+# Set the default Django settings module for the 'example' project
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'example.settings')
+
+
+@pytest.fixture(scope='session', autouse=True)
+def django_setup():
+    django.setup()

@@ -1,5 +1,5 @@
 name: HydroServer SensorThings PyPI Publish
-run-name: ${{ github.actor }} is running HydroServer SensorThings PyPI Publish on ${{ github.ref }}
+run-name: '${{ github.actor }} is running HydroServer SensorThings PyPI Publish on ${{ github.ref }}'
 
 on:
   release:
@@ -13,10 +13,10 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v3
 
-      - name: Set up Python 3.8
+      - name: Set up Python 3.9
         uses: actions/setup-python@v3
         with:
-          python-version: '3.8'
+          python-version: '3.9'
 
       - name: Install dependencies
         run: |

@@ -9,42 +9,11 @@ from .sensors.schemas import *
 from .things.schemas import *
 
 
-DatastreamRelations.update_forward_refs(
-    Thing=Thing,
-    Sensor=Sensor,
-    ObservedProperty=ObservedProperty,
-    Observation=Observation
-)
-
-FeatureOfInterestRelations.update_forward_refs(
-    Observation=Observation
-)
-
-HistoricalLocationRelations.update_forward_refs(
-    Thing=Thing,
-    Location=Location
-)
-
-LocationRelations.update_forward_refs(
-    Thing=Thing,
-    HistoricalLocation=HistoricalLocation
-)
-
-ObservationRelations.update_forward_refs(
-    FeatureOfInterest=FeatureOfInterest,
-    Datastream=Datastream
-)
-
-ObservedPropertyRelations.update_forward_refs(
-    Datastream=Datastream
-)
-
-SensorRelations.update_forward_refs(
-    Datastream=Datastream
-)
-
-ThingRelations.update_forward_refs(
-    Datastream=Datastream,
-    Location=Location,
-    HistoricalLocation=HistoricalLocation
-)
+DatastreamRelations.model_rebuild()
+FeatureOfInterestRelations.model_rebuild()
+HistoricalLocationRelations.model_rebuild()
+LocationRelations.model_rebuild()
+ObservationRelations.model_rebuild()
+ObservedPropertyRelations.model_rebuild()
+SensorRelations.model_rebuild()
+ThingRelations.model_rebuild()

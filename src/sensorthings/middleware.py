@@ -1,231 +1,224 @@
-import sensorthings
-import sensorthings.components as component_schemas
+import sensorthings.components.field_schemas as component_field_schemas
+from uuid import UUID
+from typing import ForwardRef
 from django.utils.deprecation import MiddlewareMixin
+from django.http import HttpRequest
 from django.urls import resolve
 from django.urls.exceptions import Http404
-from django.http import HttpRequest
-from sensorthings.engine import SensorThingsRequest
-from sensorthings.utils import lookup_component
+from sensorthings.components import field_schemas
 from sensorthings import settings
 
 
 id_qualifier = settings.ST_API_ID_QUALIFIER
+id_type = settings.ST_API_ID_TYPE
 
 
 class SensorThingsMiddleware(MiddlewareMixin):
+    """
+    Middleware for processing SensorThings API views.
 
-    @staticmethod
-    def process_request(request: HttpRequest) -> None:
+    This middleware attaches the SensorThings engine to the request and handles advanced paths.
+    """
+
+    def process_view(self, request: HttpRequest, view_func, view_args, view_kwargs):
         """
-        Middleware for resolving nested components in SensorThings URLs.
-
-        The SensorThings specification requires the server to handle nested resource paths and addresses to table
-        properties (including values and reference links for the properties). This middleware checks the request URLs
-        for these special cases, extracts any extra parameters from these URLs and attaches them to the request, and
-        links the request to the correct view function by updating the request's path_info attribute.
+        Process the view before it is called.
 
         Parameters
         ----------
         request : HttpRequest
-            A Django HttpRequest object.
+            The current HTTP request.
+        view_func : Callable
+            The view function that will be called.
+        view_args : tuple
+            The positional arguments for the view function.
+        view_kwargs : dict
+            The keyword arguments for the view function.
 
         Returns
         -------
-        None
+        Callable or None
+            The view function to be called, or None if no processing is needed.
         """
 
-        try:
-            resolved_path = resolve(request.path_info)
-            if resolved_path.url_name != 'st_complex_handler':
-                # Check if path is part of a SensorThings API and determine the component.
-                st_api = getattr(getattr(resolved_path.func, '__self__', None), 'api', None)
-                if isinstance(st_api, sensorthings.SensorThingsAPI):
-                    component_str = request.path_info.split('/')[-1].split('(')[0]
-                    if component_str == 'CreateObservations':
-                        request.component = 'Observation'
-                    else:
-                        request.component = lookup_component(
-                            input_value=request.path_info.split('/')[-1].split('(')[0],
-                            input_type='camel_plural',
-                            output_type='camel_singular'
-                        )
-                    request.nested_resources = []
-                return None
-        except StopIteration:
-            # Path is not part of the SensorThings app. Proceed normally.
+        # Check that the request resolved to part of the SensorThings API.
+        if not hasattr(request, 'resolver_match') or (not any(
+            namespace.endswith(('sensorthings-v1.0-api', 'sensorthings-v1.1-api'))
+            for namespace in request.resolver_match.namespaces
+        )) or request.resolver_match.url_name in ['openapi-view', 'openapi-json']:
             return None
 
-        if request.method != 'GET':
-            # Nested components are only allowed on GET requests.
-            raise Http404
+        # Attach the SensorThings engine to the request.
+        sensorthings_api = getattr(view_func, '__api__', None) or view_func.__self__.api
+        request.engine = sensorthings_api.engine(
+            request=request,
+            get_response_schemas=sensorthings_api.get_response_schemas,
+        )
+        request.nested_path = []
+        request.ref_response = False
+        request.value_response = False
 
-        route_length = len(resolved_path.route.split('/'))
-        path_components = request.path_info.split('/')[route_length:]
-        path_prefix = '/'.join(request.path_info.split('/')[:route_length])
-        component = None
-        nested_resources = []
-        primary_component = None
-        previous_component = None
-        endpoint = None
+        # Attempt to resolve advanced SensorThings paths (e.g. nested resource paths, addresses to values, etc.)
+        if request.resolver_match.url_name == 'advanced_path_handler':
+            view_func = self.handle_advanced_path(request=request)
 
-        request.component_path = '/'.join(path_components)
+        # Attach the base SensorThings URL and sub-path to the request object
+        base_url = (
+            settings.PROXY_BASE_URL
+            if settings.PROXY_BASE_URL is not None
+            else f"{request.scheme}://{request.get_host()}"
+        )
+        request.sensorthings_url = f"{base_url}/{settings.ST_API_PREFIX}/v{view_func.__self__.api.version}"
+        request.sensorthings_path = '/'.join(
+            request.path_info.split('/')[len(request.resolver_match.route.split('/')):]
+        )
 
-        for i, raw_component in enumerate(path_components):
-            path_info = f'{path_prefix}/{raw_component}'
-            field_name = None
+        # Call the updated view function.
+        return view_func(request, *view_args, **request.resolver_match.kwargs)
 
-            try:
-                resolved_path = resolve(path_info)
-                if resolved_path.url_name == 'st_complex_handler':
-                    # Sub-path may contain field names, or implicit links to related entities.
-                    raise Http404
-                if resolved_path.url_name.startswith('list'):
-                    # This sub-path represents a collection of entities.
-                    component = lookup_component(
-                        input_value=resolved_path.url_name.replace('list_', ''),
-                        input_type='snake_plural',
-                        output_type='camel_singular'
-                    )
-                    field_name = lookup_component(
-                        input_value=component,
-                        input_type='camel_singular',
-                        output_type='snake_plural'
-                    )
-                    primary_component = component
-                    endpoint = f'{path_prefix}/{raw_component}'
-                elif resolved_path.url_name.startswith('get'):
-                    # This sub-path explicitly represents a single entity.
-                    component = lookup_component(
-                        input_value=resolved_path.url_name.replace('get_', ''),
-                        input_type='snake_singular',
-                        output_type='camel_singular'
-                    )
-                    field_name = lookup_component(
-                        input_value=component,
-                        input_type='camel_singular',
-                        output_type='snake_singular'
-                    )
-                    primary_component = component
-                    endpoint = f'{path_prefix}/{raw_component}'
-                    nested_resources.append((component, resolved_path.kwargs.get(f'{field_name}_id')))
-            except Http404:
-                try:
-                    # This sub-path may be an implicit relation and needs to be converted to an explicit path.
-                    component_plural = lookup_component(
-                        input_value=raw_component,
-                        input_type='camel_singular',
-                        output_type='camel_plural'
-                    )
-                    field_name = lookup_component(
-                        input_value=raw_component,
-                        input_type='camel_singular',
-                        output_type='snake_singular'
-                    )
-                    if not field_name:
-                        raise StopIteration
-                    primary_component = raw_component
-                    endpoint = f'{path_prefix}/{component_plural}({id_qualifier}temp_id{id_qualifier})'
-                    nested_resources.append((raw_component, f'temp_id'))
-                    component = raw_component
-                except StopIteration:
-                    # This sub-path may be a field name, $value, or $ref.
-                    nested_resources = nested_resources[:-1]
-                    component = raw_component
-                    field_name = raw_component
-                    query_dict = request.GET.copy()
-                    query_dict['$select'] = field_name
-                    request.GET = query_dict
-            if previous_component in [c['SINGULAR_NAME'] for c in settings.ST_CAPABILITIES]:
-                # Check that this component is a valid child of the previous part of the path.
-                if field_name == '$ref':
-                    query_dict = request.GET.copy()
-                    query_dict['$select'] = 'self_link'
-                    request.GET = query_dict
-                elif field_name not in getattr(component_schemas, previous_component).__fields__:
-                    raise Http404
-            elif previous_component in ['$value', '$ref']:
-                # $value/$ref must be the last components of a path.
-                raise Http404
-            elif component == '$value':
-                if resolve(endpoint).url_name.startswith('list') or lookup_component(
-                    input_value=previous_component,
-                    input_type='camel_singular',
-                    output_type='snake_singular'
-                ) is not None or previous_component not in getattr(
-                    component_schemas, primary_component
-                ).__fields__.keys():
-                    # $value can only be used on individual non-relational component fields.
-                    raise Http404
-                request.value_only = True
-                query_dict = request.GET.copy()
-                query_dict['$select'] = previous_component
-                request.GET = query_dict
-            elif component == '$ref':
-                # $ref should be handled in a previous step.
-                raise Http404
-
-            previous_component = component
-
-        request.nested_resources = nested_resources
-        if endpoint:
-            request.path_info = endpoint
-        if primary_component in [c['SINGULAR_NAME'] for c in settings.ST_CAPABILITIES]:
-            request.component = primary_component
-
-    @staticmethod
-    def process_view(request: SensorThingsRequest, view_func, view_args, view_kwargs) -> None:
+    def handle_advanced_path(self, request: HttpRequest):
         """
-        Middleware for initializing a datastore engine for the request.
-
-        This middleware generates a SensorThings engine object and attaches it to the request instance. The engine
-        should include a connection to the associated database and methods for performing basic CRUD operations on that
-        database and information model.
+        Handle advanced SensorThings paths.
 
         Parameters
         ----------
-        request : SensorThingsRequest
-            A SensorThingsRequest object.
-        view_func : Callable
-            The view function associated with this request.
-        view_args : list
-            The arguments that will be passed to the view function.
-        view_kwargs : dict
-            The keyword arguments that will be passed to the view function.
+        request : HttpRequest
+            The current HTTP request.
 
         Returns
         -------
-        None
+        Callable
+            The resolved view function for the advanced path.
+
+        Raises
+        ------
+        Http404
+            If the path cannot be resolved.
         """
 
-        if hasattr(getattr(view_func, '__self__', None), 'api'):
-            st_api = view_func.__self__.api
-            if isinstance(st_api, sensorthings.SensorThingsAPI):
-                request.engine = st_api.engine(
-                    host=request.get_host(),
-                    scheme=request.scheme,
-                    path=getattr(request, 'component_path', request.path.split('/')[-1]),
-                    version=st_api.version,
-                    component=getattr(request, 'component', None)
-                )
+        # Advanced SensorThings paths are only supported on GET requests.
+        if request.method != 'GET':
+            raise Http404
 
-                if hasattr(request, 'nested_resources'):
+        # Split the path into components to check individually.
+        route_length = len(request.resolver_match.route.split('/'))
+        path_components = request.path_info.split('/')[route_length:]
+        path_prefix = '/'.join(request.path_info.split('/')[:route_length])
+        effective_resolved_path = None
+
+        for i, path_component in enumerate(path_components):
+            try:
+                resolved_path = resolve(f'{path_prefix}/{path_component}')
+                if effective_resolved_path and effective_resolved_path.url_name.startswith('list'):
+                    raise Http404
+
+                # Set the effective resolved path based on the URL name.
+                if resolved_path.url_name.startswith('list'):
+                    effective_resolved_path = resolved_path
+                elif resolved_path.url_name.startswith('get'):
+                    effective_resolved_path = resolved_path
+                    request.nested_path.append((  # noqa
+                        self.get_component_model_from_path(path_component),
+                        next(iter(effective_resolved_path.kwargs.items()))[0],
+                        next(iter(effective_resolved_path.kwargs.items()))[1],
+                    ))
+                else:
+                    raise Http404
+            except StopIteration:
+                raise Http404
+            except Http404:
+                if i == 0 or path_components[i - 1] in ['$value', '$ref'] or not effective_resolved_path:
+                    raise Http404
+                elif path_component == '$ref' and effective_resolved_path.url_name.startswith('list'):
+                    request.ref_response = True
+                elif path_component == '$value':
+                    request.value_response = True
+                else:
                     try:
-                        replacement_id, filter_id_string = request.engine.resolve_nested_resource_path(
-                            request.nested_resources
-                        )
+                        component_model = self.get_component_model_from_path(path_components[i - 1])
+                        try:
+                            field = next(
+                                field for field in component_model.model_fields.values()
+                                if path_component == field.alias
+                            )
+                        except StopIteration:
+                            raise Http404
 
-                        if replacement_id:
-                            request.path_info = request.path_info.replace('temp_id', str(replacement_id))
-                            for key in view_kwargs.keys():
-                                view_kwargs[key] = view_kwargs[key].replace('temp_id', str(replacement_id))
+                        field_annotation = getattr(field_schemas, field.annotation.__forward_arg__) if (
+                            isinstance(field.annotation, ForwardRef)
+                        ) else field.annotation
 
-                        if filter_id_string:
+                        engine_ref = getattr(
+                            field_annotation, 'model_config', {}
+                        ).get('json_schema_extra', {}).get('name_ref', (None,))[0]
+
+                        if engine_ref:
+                            resolved_path = resolve(
+                                f'{path_prefix}/{engine_ref}({id_qualifier}{self.get_placeholder_id()}{id_qualifier})'
+                            )
+                            effective_resolved_path = resolved_path
+                            request.nested_path.append((  # noqa
+                                self.get_component_model_from_path(path_component),
+                                next(iter(effective_resolved_path.kwargs.items()))[0],
+                                None,
+                            ))
+                        else:
                             query_dict = request.GET.copy()
-                            if not query_dict.get('$filter'):
-                                query_dict['$filter'] = filter_id_string
-                            else:
-                                query_dict['$filter'] += f' and {filter_id_string}'
+                            query_dict['$select'] = field.alias
                             request.GET = query_dict
+                    except StopIteration:
+                        raise Http404
 
-                    except Http404:
-                        request.engine.component = None
+        # Update the request's resolver match with the effective resolved path.
+        request.resolver_match = effective_resolved_path
+
+        return effective_resolved_path.func
+
+    @staticmethod
+    def get_component_model_from_path(path_component: str):
+        """
+        Get the component model from the path component.
+
+        Parameters
+        ----------
+        path_component : str
+            The path component.
+
+        Returns
+        -------
+        Type
+            The component model class.
+        """
+
+        if '(' in path_component:
+            path_component = path_component.split('(')[0]
+
+        if path_component in dir(component_field_schemas):
+            return getattr(component_field_schemas, path_component)
+        else:
+            return next(
+                getattr(component_field_schemas, schema) for schema in dir(component_field_schemas)
+                if getattr(
+                    getattr(component_field_schemas, schema), 'model_config', {}
+                ).get('json_schema_extra', {}).get('name_ref', (None,))[0] == path_component
+            )
+
+    @staticmethod
+    def get_placeholder_id():
+        """
+        Get a placeholder ID based on the ID type.
+
+        Returns
+        -------
+        Union[str, int, UUID]
+            A placeholder ID.
+        """
+
+        if id_type == str:
+            return '0'
+        elif id_type == int:
+            return 0
+        elif id_type == UUID:
+            return '00000000-0000-0000-0000-000000000000'
+        else:
+            return '0'

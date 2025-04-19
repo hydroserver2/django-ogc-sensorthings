@@ -1,17 +1,17 @@
 from ninja import Query
+from django.http import HttpResponse
 from sensorthings import settings
 from sensorthings.router import SensorThingsRouter
-from sensorthings.engine import SensorThingsRequest
+from sensorthings.http import SensorThingsHttpRequest
 from sensorthings.schemas import ListQueryParams, GetQueryParams
-from .schemas import SensorPostBody, SensorPatchBody, SensorListResponse, SensorGetResponse
+from sensorthings.factories import SensorThingsRouterFactory, SensorThingsEndpointFactory
+from .schemas import Sensor, SensorPostBody, SensorPatchBody, SensorListResponse, SensorGetResponse
 
 
-router = SensorThingsRouter(tags=['Sensors'])
 id_qualifier = settings.ST_API_ID_QUALIFIER
 id_type = settings.ST_API_ID_TYPE
 
 
-@router.st_list('/Sensors', response_schemas=(SensorListResponse,), url_name='list_sensor')
 def list_sensors(
         request,
         params: ListQueryParams = Query(...)
@@ -26,14 +26,22 @@ def list_sensors(
     """
 
     return request.engine.list_entities(
-        request=request,
+        component=Sensor,
         query_params=params.dict()
     )
 
 
-@router.st_get(f'/Sensors({id_qualifier}{{sensor_id}}{id_qualifier})', response_schemas=(SensorGetResponse,))
+list_sensors_endpoint = SensorThingsEndpointFactory(
+    router_name='sensor',
+    endpoint_route='/Sensors',
+    view_function=list_sensors,
+    view_method=SensorThingsRouter.st_list,
+    view_response_schema=SensorListResponse,
+)
+
+
 def get_sensor(
-        request: SensorThingsRequest,
+        request: SensorThingsHttpRequest,
         sensor_id: id_type,
         params: GetQueryParams = Query(...)
 ):
@@ -47,15 +55,24 @@ def get_sensor(
     """
 
     return request.engine.get_entity(
-        request=request,
+        component=Sensor,
         entity_id=sensor_id,
         query_params=params.dict()
     )
 
 
-@router.st_post('/Sensors')
+get_sensor_endpoint = SensorThingsEndpointFactory(
+    router_name='sensor',
+    endpoint_route=f'/Sensors({id_qualifier}{{sensor_id}}{id_qualifier})',
+    view_function=get_sensor,
+    view_method=SensorThingsRouter.st_get,
+    view_response_schema=SensorGetResponse,
+)
+
+
 def create_sensor(
-        request: SensorThingsRequest,
+        request: SensorThingsHttpRequest,
+        response: HttpResponse,
         sensor: SensorPostBody
 ):
     """
@@ -70,15 +87,25 @@ def create_sensor(
       Create Entity</a>
     """
 
-    return request.engine.create_entity(
-        request=request,
-        entity_body=sensor
+    request.engine.create_entity(
+        component=Sensor,
+        entity_body=sensor,
+        response=response
     )
 
+    return 201, None
 
-@router.patch(f'/Sensors({id_qualifier}{{sensor_id}}{id_qualifier})')
+
+create_sensor_endpoint = SensorThingsEndpointFactory(
+    router_name='sensor',
+    endpoint_route='/Sensors',
+    view_function=create_sensor,
+    view_method=SensorThingsRouter.st_post,
+)
+
+
 def update_sensor(
-        request: SensorThingsRequest,
+        request: SensorThingsHttpRequest,
         sensor_id: id_type,
         sensor: SensorPatchBody
 ):
@@ -94,16 +121,25 @@ def update_sensor(
       Update Entity</a>
     """
 
-    return request.engine.update_entity(
-        request=request,
+    request.engine.update_entity(
+        component=Sensor,
         entity_id=sensor_id,
         entity_body=sensor
     )
 
+    return 204, None
 
-@router.delete(f'/Sensors({id_qualifier}{{sensor_id}}{id_qualifier})')
+
+update_sensor_endpoint = SensorThingsEndpointFactory(
+    router_name='sensor',
+    endpoint_route=f'/Sensors({id_qualifier}{{sensor_id}}{id_qualifier})',
+    view_function=update_sensor,
+    view_method=SensorThingsRouter.st_patch,
+)
+
+
 def delete_sensor(
-        request: SensorThingsRequest,
+        request: SensorThingsHttpRequest,
         sensor_id: id_type
 ):
     """
@@ -114,7 +150,30 @@ def delete_sensor(
       Delete Entity</a>
     """
 
-    return request.engine.delete_entity(
-        request=request,
+    request.engine.delete_entity(
+        component=Sensor,
         entity_id=sensor_id
     )
+
+    return 204, None
+
+
+delete_sensor_endpoint = SensorThingsEndpointFactory(
+    router_name='sensor',
+    endpoint_route=f'/Sensors({id_qualifier}{{sensor_id}}{id_qualifier})',
+    view_function=delete_sensor,
+    view_method=SensorThingsRouter.st_delete,
+)
+
+
+sensor_router_factory = SensorThingsRouterFactory(
+    name='sensor',
+    tags=['Sensors'],
+    endpoints=[
+        list_sensors_endpoint,
+        get_sensor_endpoint,
+        create_sensor_endpoint,
+        update_sensor_endpoint,
+        delete_sensor_endpoint
+    ]
+)

@@ -9,7 +9,10 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ['3.8', '3.9', '3.10']
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+
+    env:
+      DJANGO_SETTINGS_MODULE: example.settings
 
     steps:
       - name: Checkout Repo
@@ -28,8 +31,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
           pip install pytest
-          pip install mock
 
       - name: Run unit tests
         run: |
-          python -m pytest --import-mode=append tests/
+          cd example
+          python -m pytest --pyargs ../tests

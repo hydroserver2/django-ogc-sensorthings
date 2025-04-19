@@ -1,4 +1,5 @@
 from ninja import Router
+from django.http import HttpResponse
 from django.urls import reverse
 from .schemas import ServerRootResponse
 from sensorthings import settings
@@ -26,9 +27,13 @@ def get_root(request):
         'server_capabilities': [
             {
                 'name': capability['NAME'],
-                'url': host_url + reverse(f"api-{settings.ST_VERSION}:{capability['VIEW']}")
+                'url': host_url + reverse(f"sensorthings-v{settings.ST_VERSION}-api:{capability['VIEW']}")
             } for capability in settings.ST_CAPABILITIES
         ]
     }
 
     return response
+
+
+def handle_advanced_path(request):  # noqa
+    return HttpResponse(status=404)

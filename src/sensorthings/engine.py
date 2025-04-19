@@ -1,18 +1,14 @@
 import re
-from itertools import groupby
+import pytz
 from abc import ABCMeta
+from typing import TYPE_CHECKING, List, Optional, Type, Dict, Callable, Tuple, ForwardRef
 from uuid import UUID
 from datetime import datetime
-from typing import Union, Tuple, List, Optional
+from dateutil.parser import isoparse
+from django.http import HttpResponse
 from ninja.errors import HttpError
-from django.http import HttpRequest
-from django.urls.exceptions import Http404
 from odata_query.grammar import ODataParser, ODataLexer
-from odata_query.exceptions import ParsingException
-from sensorthings import components as component_schemas
-from sensorthings import settings
-from sensorthings.utils import lookup_component
-from sensorthings.schemas import ListQueryParams, EntityId
+from odata_query.exceptions import ParsingException, TokenizingException
 from sensorthings.components.things.engine import ThingBaseEngine
 from sensorthings.components.locations.engine import LocationBaseEngine
 from sensorthings.components.historicallocations.engine import HistoricalLocationBaseEngine
@@ -21,8 +17,19 @@ from sensorthings.components.sensors.engine import SensorBaseEngine
 from sensorthings.components.observedproperties.engine import ObservedPropertyBaseEngine
 from sensorthings.components.featuresofinterest.engine import FeatureOfInterestBaseEngine
 from sensorthings.components.observations.engine import ObservationBaseEngine
-from sensorthings.components.observations.schemas import ObservationPostBody, ObservationDataArrayFields, \
-     ObservationDataArray, ObservationParams
+from sensorthings.schemas import ListQueryParams
+from sensorthings.components import field_schemas
+from sensorthings.components.datastreams.schemas import DatastreamPatchBody
+from sensorthings import settings
+
+
+if TYPE_CHECKING:
+    from sensorthings.schemas import BaseComponent, BaseGetResponse, BasePostBody, BasePatchBody
+    from sensorthings.http import SensorThingsHttpRequest
+
+
+id_qualifier = settings.ST_API_ID_QUALIFIER
+id_type = settings.ST_API_ID_TYPE
 
 
 class SensorThingsBaseEngine(
@@ -37,49 +44,53 @@ class SensorThingsBaseEngine(
     metaclass=ABCMeta
 ):
     """
-    Abstract base class for a SensorThings engine.
+    Abstract base engine class for handling CRUD operations and querying SensorThings components.
 
-    A SensorThings API must be linked to a SensorThings engine to perform database operations. This class defines all
-    required methods for an engine class and should be inherited by any SensorThings engine used by an API.
+    Attributes
+    ----------
+    request : SensorThingsHttpRequest
+        The HTTP request object used for communication.
+    get_response_schemas : Dict[str, Type[BaseGetResponse]]
+        Mapping of component names to their corresponding response schemas.
     """
 
     def __init__(
             self,
-            host,
-            scheme,
-            path,
-            version,
-            component
+            request: "SensorThingsHttpRequest",
+            get_response_schemas: Dict[str, Type["BaseGetResponse"]]
     ):
-        self.request = None
-        self.host = host
-        self.scheme = scheme
-        self.path = path
-        self.version = version
-        self.component = component
-        self.id_qualifier = settings.ST_API_ID_QUALIFIER
-
-    def list_entities(self, request, query_params, component=None, join_ids=None, drop_related_links=False, root=True):
-        """"""
-
         self.request = request
+        self.get_response_schemas = get_response_schemas
 
-        if not self.component:
-            raise HttpError(404, 'Entity not found.')
+    def list_entities(
+            self,
+            component: Type['BaseComponent'],
+            query_params=None
+    ) -> Dict:
+        """
+        Retrieve a list of entities of a specific component type.
 
-        if not join_ids:
-            join_ids = {}
+        Parameters
+        ----------
+        component : Type[BaseComponent]
+            The type of component to retrieve.
+        query_params : Optional[dict], optional
+            Optional query parameters for filtering, pagination, etc.
 
-        entities, count = getattr(self, 'get_' + lookup_component(
-            component if component else self.component, 'camel_singular', 'snake_plural'
-        ))(
-            filters=self.get_filters(query_params.get('filters')) if query_params.get('filters') else None,
-            pagination=self.get_pagination(query_params),
-            ordering=self.get_ordering(query_params),
-            expanded=not root,
-            get_count=True if query_params.get('count') is True else False,
-            **join_ids
-        )
+        Returns
+        -------
+        Dict
+            A dictionary containing the retrieved entities and optional metadata.
+        """
+
+        nested_entity_id = self.check_nested_path()
+
+        if nested_entity_id:
+            nested_entity_filter = f"{self.request.nested_path[-1][0].__name__}/id eq '{nested_entity_id}'"
+            query_params['filters'] = f'{query_params["filters"]} and {nested_entity_filter}' \
+                if query_params['filters'] else nested_entity_filter
+
+        entities, count = self.fetch_entities(component=component, query_params=query_params)
 
         next_link = self.build_next_link(
             query_params=query_params,
@@ -87,18 +98,8 @@ class SensorThingsBaseEngine(
             count=count
         )
 
-        if query_params.get('result_format') != 'dataArray':
-            entities = self.build_selects_links_and_nested_components(
-                request=request,
-                component=component if component else self.component,
-                values=entities,
-                expand=query_params.get('expand'),
-                select=query_params.get('select'),
-                drop_related_links=drop_related_links
-            )
-
         response = {
-            'value': entities
+            'value': list(entities.values())
         }
 
         if query_params.get('count') is True:
@@ -106,213 +107,494 @@ class SensorThingsBaseEngine(
 
         if next_link:
             response['next_link'] = next_link
-        if query_params.get('result_format') == 'dataArray' and \
-                (component is None and self.component == 'Observation' or component == 'Observation'):
-            response = self.convert_to_data_array(
-                response=response,
-                select=query_params.get('select')
-            )
 
         return response
 
-    def get_entity(self, request, entity_id, query_params):
-
-        self.request = request
-
-        if not self.component:
-            raise HttpError(404, 'Entity not found.')
-
-        entities, count = getattr(self, 'get_' + lookup_component(
-            self.component, 'camel_singular', 'snake_plural'
-        ))(
-            filters=self.get_filters(f"id eq '{entity_id}'"),
-            get_count=False
-        )
-
-        entities = self.build_selects_links_and_nested_components(
-            request=request,
-            component=self.component,
-            values=entities,
-            expand=query_params.get('expand'),
-            select=query_params.get('select')
-        )
-
-        entity = next(iter(entities), None)
-
-        if not entity:
-            raise HttpError(404, 'Record not found.')
-
-        if getattr(request, 'value_only', False) is True:
-            request.response_string = entity[query_params['select']]
-
-        return entity
-
-    def create_entity(self, request, response, entity_body):
-        """"""
-
-        self.request = request
-
-        entity_id = getattr(self, 'create_' + lookup_component(
-            self.component, 'camel_singular', 'snake_singular'
-        ))(
-            entity_body
-        )
-
-        response['Location'] = self.get_ref(self.component, entity_id)
-
-    def create_entity_bulk(self, request, entity_body):
-        """"""
-
-        self.request = request
-        grouped_entity_body = {}
-
-        if request.component == 'Observation':
-            for group in entity_body:
-                grouped_entity_body[group.datastream.id] = grouped_entity_body.get(
-                    group.datastream.id, []
-                )
-                mapped_fields = {
-                    group.components.index(meta.alias) if meta.alias in group.components else None: field
-                    for field, meta in ObservationPostBody.__fields__.items()
-                }
-                grouped_entity_body[group.datastream.id].extend([
-                    ObservationPostBody(
-                        datastream=EntityId(id=group.datastream.id),
-                        **{
-                            mapped_fields[i]: value for i, value in enumerate(entity)
-                        }
-                    ) for entity in group.data_array
-                ])
-
-        entity_ids = getattr(self, 'create_' + lookup_component(
-            self.component, 'camel_singular', 'snake_singular'
-        ) + '_bulk')(
-            grouped_entity_body
-        )
-
-        return [
-            self.get_ref(self.component, entity_id)
-            for entity_id in entity_ids
-        ]
-
-    def update_entity(self, request, entity_id, entity_body, component=None):
-        """"""
-
-        self.request = request
-
-        getattr(self, 'update_' + lookup_component(
-            component if component else self.component, 'camel_singular', 'snake_singular'
-        ))(
-            entity_id,
-            entity_body
-        )
-
-    def delete_entity(self, request, entity_id):
-        self.request = request
-
-        getattr(self, 'delete_' + lookup_component(
-            self.component, 'camel_singular', 'snake_singular'
-        ))(
-            entity_id,
-        )
-
-    def get_ref(
-            self,
-            component: Optional[str] = None,
-            entity_id: Optional[str] = None,
-            related_component: Optional[str] = None,
-            is_collection: Optional[bool] = False
-    ) -> str:
+    def get_entity(self, component: Type['BaseComponent'], entity_id: id_type, query_params) -> Dict:
         """
-        Builds a reference URL for a given entity.
+        Retrieve a single entity of a specific component type by its ID.
 
         Parameters
         ----------
-        component : str
-            The value to use as the base component in the URL.
-        entity_id : str
-            The ID of the entity if there is one.
-        related_component : str
-            The related component to be appended to the ref URL.
-        is_collection : bool
-            Sets whether the related component is a collection or not.
+        component : Type[BaseComponent]
+            The type of component to retrieve.
+        entity_id : id_type
+            The ID of the entity to retrieve.
+        query_params : dict
+            Optional query parameters for filtering, pagination, etc.
 
         Returns
         -------
-        str
-            The entity's reference URL.
+        Dict
+            The retrieved entity.
         """
 
-        base_url = settings.PROXY_BASE_URL if settings.PROXY_BASE_URL is not None else f'{self.scheme}://{self.host}'
-        base_url = f'{base_url}/{settings.ST_API_PREFIX}/v{self.version}'
+        nested_entity_id = self.check_nested_path()
+        if nested_entity_id and entity_id in [UUID('00000000-0000-0000-0000-000000000000'), '0', 0]:
+            entity_id = nested_entity_id
 
-        url_component = lookup_component(component if component else self.component, 'camel_singular', 'camel_plural')
+        filter_wrap = "'" if id_type == int else ''
+        query_params['filters'] = f"id eq {filter_wrap}{str(entity_id)}{filter_wrap}"
 
-        ref_url = f'{base_url}/{url_component}'
+        entities, count = self.fetch_entities(
+            component=component,
+            query_params=query_params
+        )
 
-        if entity_id is not None:
-            ref_url = f'{ref_url}({self.id_qualifier}{entity_id}{self.id_qualifier})'
+        entity = next(iter(entities.values()), None)
 
-        if related_component is not None:
-            if is_collection is True:
-                related_component = lookup_component(related_component, 'camel_singular', 'camel_plural')
-            ref_url = f'{ref_url}/{related_component}'
+        if not entity:
+            raise HttpError(404, f'{component.__name__} not found.')
 
-        return ref_url
+        if self.request.value_response is True:
+            entity = str(entity.get(query_params['select']))
 
-    def resolve_nested_resource_path(self, nested_resources):
-        """"""
+        return entity
 
-        entity = None
-        replacement_id = None
-        filter_id_string = None
-        for nested_resource in nested_resources:
-            if nested_resource[1] is not None:
-                component = lookup_component(nested_resource[0], 'camel_singular', 'snake_singular')
-                if 'temp_id' not in nested_resource[1]:
-                    lookup_id = nested_resource[1].replace(self.id_qualifier, '')
-                else:
-                    lookup_id = entity[f'{component}_id']
-                    replacement_id = lookup_id
+    def create_entity(
+            self,
+            component: Type['BaseComponent'],
+            entity_body: 'BasePostBody',
+            response: HttpResponse
+    ):
+        """
+        Create a new entity of a specific component type.
 
-                entity = next(iter(getattr(
-                    self, f'get_{lookup_component(component, "snake_singular", "snake_plural")}'
+        Parameters
+        ----------
+        component : Type[BaseComponent]
+            The type of component to create.
+        entity_body : BasePostBody
+            The body containing the data for creating the entity.
+        response : HttpResponse
+            The HTTP response object to populate with the location of the created entity.
+        """
+
+        entity_id = getattr(self, f"create_{component.model_config['json_schema_extra']['name_ref'][1]}")(entity_body)
+        response['Location'] = self.build_ref_link(component, entity_id)
+
+    def create_entities(
+            self,
+            component: Type['BaseComponent'],
+            entity_body: 'BasePostBody',
+    ) -> List[str]:
+        """
+        Create multiple entities of a specific component type.
+
+        Parameters
+        ----------
+        component : Type[BaseComponent]
+            The type of component to create.
+        entity_body : BasePostBody
+            The body containing the data for creating the entities.
+
+        Returns
+        -------
+        List[str]
+            A list of IDs of the created entities.
+        """
+
+        return getattr(self, f"create_{component.model_config['json_schema_extra']['name_ref'][2]}")(entity_body)
+
+    def update_entity(
+            self,
+            component: Type['BaseComponent'],
+            entity_id: id_type,
+            entity_body: 'BasePatchBody',
+    ):
+        """
+        Update an existing entity of a specific component type.
+
+        Parameters
+        ----------
+        component : Type[BaseComponent]
+            The type of component to update.
+        entity_id : id_type
+            The ID of the entity to update.
+        entity_body : BasePatchBody
+            The body containing the data for updating the entity.
+        """
+
+        getattr(self, f"update_{component.model_config['json_schema_extra']['name_ref'][1]}")(entity_id, entity_body)
+
+    def delete_entity(
+            self,
+            component: Type['BaseComponent'],
+            entity_id: id_type,
+    ):
+        """
+        Delete an entity of a specific component type.
+
+        Parameters
+        ----------
+        component : Type[BaseComponent]
+            The type of component to delete.
+        entity_id : id_type
+            The ID of the entity to delete.
+        """
+
+        getattr(self, f"delete_{component.model_config['json_schema_extra']['name_ref'][1]}")(entity_id)
+
+    def fetch_entities(
+            self,
+            component: Type['BaseComponent'],
+            query_params=None,
+            back_ref_ids=None
+    ) -> Tuple[Dict[str, dict], int]:
+        """
+        Fetch entities of a specific component type with optional query parameters.
+
+        Parameters
+        ----------
+        component : Type[BaseComponent]
+            The type of component to fetch.
+        query_params : Optional[dict], optional
+            Optional query parameters for filtering, pagination, etc.
+        back_ref_ids : Optional[dict], optional
+            Optional back reference IDs for fetching related entities.
+
+        Returns
+        -------
+        Tuple[Dict[str, dict], int]
+            A tuple containing a dictionary of fetched entities and the total count of entities.
+        """
+
+        query_params = query_params or {}
+
+        entities, count = getattr(self, f"get_{component.model_config['json_schema_extra']['name_ref'][2]}")(
+            filters=self.parse_filters(query_params),
+            pagination=self.parse_pagination(query_params),
+            ordering=self.parse_ordering(query_params),
+            get_count=True if query_params.get('count') is True else False,
+            **back_ref_ids or {}
+        )
+
+        entities = self.insert_self_links(entities=entities, component=component)
+        entities = self.insert_related_entities(
+            entities=entities,
+            component=component,
+            query_params=query_params or {},
+            include_links=True if back_ref_ids is None else False
+        )
+        entities = self.remove_unselected_fields(
+            entities=entities,
+            component=component,
+            query_params=query_params or {}
+        )
+
+        return entities, count
+
+    def check_nested_path(self):
+        """
+        Check if there is a nested path in the request and return the ID of the nested entity.
+
+        Returns
+        -------
+        Optional[str]
+            The ID of the nested entity or None if no nested path exists.
+        """
+
+        previous_entity = None
+
+        for component, entity_filter_field, entity_id in self.request.nested_path:
+            try:
+                if not previous_entity and not entity_id:
+                    raise HttpError(404, f'{component.__name__} not found.')
+                if not entity_id:
+                    entity_id = previous_entity.get(entity_filter_field)
+                previous_entity = list(getattr(
+                    self, f"get_{component.model_config['json_schema_extra']['name_ref'][2]}"
                 )(
-                    expanded=True,
-                    **{f'{component}_ids': [lookup_id]}
-                )[0]), None)
+                    **{f'{entity_filter_field}s': [entity_id]}
+                )[0].values())[0]
+            except IndexError:
+                raise HttpError(404, f'{component.__name__} not found.')
 
-                if not entity:
-                    raise Http404
+        return previous_entity['id'] if previous_entity else None
 
-                filter_id_string = f'{nested_resource[0]}/id eq \'{lookup_id}\''
+    def remove_unselected_fields(
+            self,
+            entities: Dict[str, dict],
+            component: Type['BaseComponent'],
+            query_params: dict
+    ) -> Dict[str, dict]:
+        """
+        Removes fields from entities that are not selected in query parameters.
 
+        Parameters
+        ----------
+        entities : dict
+            A dictionary of entities with their fields.
+        component : Type['BaseComponent']
+            The component type to process.
+        query_params : dict
+            The query parameters specifying the selected fields.
+
+        Returns
+        -------
+        dict
+            A dictionary of entities with only the selected fields.
+        """
+
+        unselected_fields = self.parse_select(component=component, query_params=query_params)
+        entities = {
+            entity_id: {
+                field_name: field_value for field_name, field_value in entity.items()
+                if field_name not in unselected_fields
+            } for entity_id, entity in entities.items()
+        }
+
+        return entities
+
+    def insert_related_entities(
+            self,
+            entities: Dict[str, dict],
+            component: Type['BaseComponent'],
+            query_params: dict,
+            include_links: bool = True
+    ) -> Dict[str, dict]:
+        """
+        Inserts related entities into the entities based on the expand query parameter.
+
+        Parameters
+        ----------
+        entities : dict
+            A dictionary of entities.
+        component : Type['BaseComponent']
+            The component type of the entities.
+        query_params : dict
+            The query parameters containing expand information.
+        include_links : bool, optional
+            Whether to include links to related entities (default is True).
+
+        Returns
+        -------
+        dict
+            A dictionary of entities with related entities inserted.
+        """
+
+        expand_properties = self.parse_expand(
+            component=component,
+            query_params=query_params
+        )
+
+        for related_component_name, related_component_field in component.get_related_components().items():
+            if related_component_name not in expand_properties:
+                if include_links is True:
+                    entities = {
+                        entity_id: {
+                            f'{related_component_name}_link': f'{entity["self_link"]}/{related_component_field.alias}',
+                            **entity
+                        } for entity_id, entity in entities.items()
+                    }
             else:
-                filter_id_string = None
+                related_component = related_component_field.annotation
+                back_ref = related_component_field.json_schema_extra['back_ref']
+                component_relationship = related_component_field.json_schema_extra['relationship']
 
-        return replacement_id, filter_id_string
+                if component_relationship in ['one_to_many', 'many_to_many']:
+                    related_component = related_component.__args__[0]
+                    back_ref_ids = {f'{back_ref}s': entities.keys()}
+                else:
+                    back_ref_ids = {f'{back_ref}s': [entity[back_ref] for entity in entities.values()]}
+
+                if isinstance(related_component, ForwardRef):
+                    related_component = getattr(field_schemas, related_component.__forward_arg__)
+
+                related_entities, _ = self.fetch_entities(
+                    component=related_component,
+                    query_params=expand_properties[related_component_name]['query_params'],
+                    back_ref_ids=back_ref_ids
+                )
+
+                related_response_schema = self.get_response_schemas[f'{related_component.__name__}GetResponse']
+
+                if component_relationship == 'many_to_many':
+                    entities = self.insert_entity_field(
+                        entities=entities,
+                        entity_field_name=f'{related_component_name}_rel',
+                        entity_function=lambda entity_id, entity: [
+                            related_response_schema(**related_entity).dict(by_alias=True, exclude_unset=True)
+                            for related_entity_id, related_entity in related_entities.items()
+                            if entity_id in related_entity[f'{back_ref}s']
+                        ]
+                    )
+                elif component_relationship == 'one_to_many':
+                    entities = self.insert_entity_field(
+                        entities=entities,
+                        entity_field_name=f'{related_component_name}_rel',
+                        entity_function=lambda entity_id, entity: [
+                            related_response_schema(**related_entity).dict(by_alias=True, exclude_unset=True)
+                            for related_entity_id, related_entity in related_entities.items()
+                            if related_entity[back_ref] == entity_id
+                        ]
+                    )
+                else:
+                    entities = self.insert_entity_field(
+                        entities=entities,
+                        entity_field_name=f'{related_component_name}_rel',
+                        entity_function=lambda entity_id, entity: related_response_schema(
+                            **related_entities.get(entity[back_ref])
+                        ).dict(by_alias=True, exclude_unset=True)
+                    )
+
+        return entities
+
+    def insert_self_links(self, entities: Dict[str, dict], component: Type['BaseComponent']) -> Dict[str, dict]:
+        """
+        Inserts self-links into the entities.
+
+        Parameters
+        ----------
+        entities : dict
+            A dictionary of entities.
+        component : Type['BaseComponent']
+            The component type of the entities.
+
+        Returns
+        -------
+        dict
+            A dictionary of entities with self-links inserted.
+        """
+
+        return self.insert_entity_field(
+            entities=entities,
+            entity_field_name='self_link',
+            entity_function=lambda entity_id, entity: self.build_ref_link(component, entity_id),
+        )
 
     @staticmethod
-    def get_filters(filter_string: str):
-        """"""
+    def insert_entity_field(
+            entities: Dict[str, dict], entity_field_name: str, entity_function: Callable
+    ) -> Dict[str, dict]:
+        """
+        Inserts a field into each entity based on a provided function.
+
+        Parameters
+        ----------
+        entities : dict
+            A dictionary of entities.
+        entity_field_name : str
+            The name of the field to insert.
+        entity_function : Callable
+            A function to generate the field value.
+
+        Returns
+        -------
+        dict
+            A dictionary of entities with the new field inserted.
+        """
+
+        return {
+            entity_id: {
+                entity_field_name: entity_function(entity_id, entity),
+                **entity
+            } for entity_id, entity in entities.items()
+        }
+
+    def parse_select(self, component: Type['BaseComponent'], query_params: dict):
+        """
+        Parses the select query parameter to determine unselected fields.
+
+        Parameters
+        ----------
+        component : Type['BaseComponent']
+            The component type for which to parse the select parameter.
+        query_params : dict
+            The query parameters containing the select parameter.
+
+        Returns
+        -------
+        list
+            A list of unselected field names.
+        """
+
+        select_parameter = query_params.get('select')
+
+        if self.request.ref_response is True:
+            select_parameter = ['@iot.selfLink']
+        elif not select_parameter:
+            return []
+        else:
+            select_parameter = select_parameter.split(',')
+            if 'id' in select_parameter:
+                select_parameter.append('@iot.id')
+
+        unselect_components = [
+            field[0] for field in self.get_response_schemas[f'{component.__name__}GetResponse'].model_fields.items()
+            if field[1].alias not in select_parameter
+        ]
+
+        return unselect_components
+
+    @staticmethod
+    def parse_filters(query_params: dict):
+        """
+        Parses the filters query parameter into a filter object.
+
+        Parameters
+        ----------
+        query_params : dict
+            The query parameters containing the filters.
+
+        Returns
+        -------
+        object
+            The parsed filter object, or None if no filters are specified.
+        """
+
+        filter_string = query_params.get('filters')
+
+        if not filter_string:
+            return None
 
         lexer = ODataLexer()
         parser = ODataParser()
 
         try:
             return parser.parse(lexer.tokenize(filter_string))
-        except ParsingException:
+        except (ParsingException, TokenizingException):
             raise HttpError(422, 'Failed to parse filter parameter.')
 
     @staticmethod
-    def get_ordering(query_params: dict):
-        """"""
+    def parse_pagination(query_params: dict) -> dict:
+        """
+        Parses pagination parameters from query parameters.
 
-        order_by_string = query_params.get('order_by')
+        Parameters
+        ----------
+        query_params : dict
+            The query parameters containing pagination information.
 
-        if not order_by_string:
-            order_by_string = ''
+        Returns
+        -------
+        dict
+            A dictionary containing pagination parameters.
+        """
 
+        return {
+            'skip': query_params.get('skip') or 0,
+            'top': query_params.get('top') or 100,
+            'count': query_params.get('count') or False
+        }
+
+    @staticmethod
+    def parse_ordering(query_params: dict) -> List[dict]:
+        """
+        Parses ordering parameters from query parameters.
+
+        Parameters
+        ----------
+        query_params : dict
+            The query parameters containing ordering information.
+
+        Returns
+        -------
+        list of dict
+            A list of dictionaries specifying field names and directions for ordering.
+        """
+
+        order_by_string = query_params.get('order_by') or ''
         ordering = [
             {
                 'field': order_field.strip().split(' ')[0],
@@ -323,237 +605,27 @@ class SensorThingsBaseEngine(
         return ordering
 
     @staticmethod
-    def get_pagination(query_params):
-        """"""
-
-        return {
-            'skip': query_params['skip'] if query_params['skip'] is not None else 0,
-            'top': query_params['top'] if query_params['top'] is not None else 100,
-            'count': query_params['count'] if query_params['count'] is not None else False
-        }
-
-    def build_next_link(
-            self,
-            query_params: dict,
-            length: int,
-            count: Optional[int] = None
-    ):
-        """"""
-
-        top = query_params.pop('top', None)
-        skip = query_params.pop('skip', None)
-
-        if top is None:
-            top = 100
-
-        if skip is None:
-            skip = 0
-
-        if count is not None and top + skip < count or count is None and top == length:
-            query_string = ObservationParams(
-                top=top,
-                skip=top + skip,
-                **query_params
-            ).get_query_string()
-
-            return f'{self.get_ref()}{query_string}'
-        else:
-            return None
-
-    def build_selects_links_and_nested_components(
-            self,
-            request,
-            component,
-            values,
-            expand,
-            select=None,
-            data_array=False,
-            drop_related_links=False
-    ):
+    def parse_expand(component: Type['BaseComponent'], query_params: dict):
         """
-        The build_selects_links_and_nested_components function is used to build the self_link, related_component_links,
-        and nested components for a given component. The function takes in the following parameters:
+        Parses the expand query parameter for related entities and their nested properties.
 
-        :param self: Refer to the current object
-        :param request: Get the query parameters from the request
-        :param component: Determine which component is being queried
-        :param values: Pass in the values that are returned from the list_entities function
-        :param expand: Expand nested components
-        :param select: Specify which fields should be returned in the response
-        :param data_array: Determine whether the data should be returned in a dataarray format
-        :param drop_related_links: Drop the related links from the response
-        :return: A list of dictionaries
+        Parameters
+        ----------
+        component : Type['BaseComponent']
+            The component type for which to parse expand parameters.
+        query_params : dict
+            The query parameters containing the expand parameter.
+
+        Returns
+        -------
+        dict
+            A dictionary mapping related component names to their respective query parameters.
         """
 
-        related_components = self.get_related_components(component)
-        expand_properties = self.parse_expand_parameter(component, expand)
-        unselect_components = self.parse_select_parameter(component, select)
-
-        for value in values:
-            value['uid'] = value['id']
-
-            if select == 'self_link' or (len(unselect_components) == 0 and data_array is False):
-                value['self_link'] = self.get_ref(
-                    component=component,
-                    entity_id=value['uid']
-                )
-
-            for unselect_component in unselect_components:
-                value.pop(unselect_component, None)
-
-            if data_array is False:
-                for related_component, component_meta in related_components.items():
-                    if related_component in expand_properties:
-                        expand_properties[related_component]['join_ids'].append(
-                            value[expand_properties[related_component]['join_field']]
-                        )
-                    elif related_component not in unselect_components:
-                        value[f'{related_component}_link'] = self.get_ref(
-                            component=component,
-                            entity_id=value['uid'],
-                            related_component=component_meta['component'],
-                            is_collection=component_meta['is_collection']
-                        ) if not drop_related_links else None
-
-        if data_array is False:
-            for expand_property_name, expand_property_meta in expand_properties.items():
-                if len(expand_property_meta['join_ids']) > 0:
-                    if expand_property_meta['join_field'] == 'uid':
-                        join_field = lookup_component(
-                            component, 'camel_singular', 'snake_singular'
-                        ) + '_ids'
-                    else:
-                        join_field = expand_property_meta['join_field'] + 's'
-
-                    apply_data_array = expand_property_meta['query_params'].get('result_format') == 'dataArray'
-
-                    related_entities = {
-                        entity.get('uid') if not apply_data_array else entity.get('datastream_id'): entity
-                        for entity in self.list_entities(
-                            request=request,
-                            query_params=expand_property_meta['query_params'],
-                            component=expand_property_meta['component'],
-                            join_ids={
-                                join_field: expand_property_meta['join_ids']
-                            },
-                            drop_related_links=True,
-                            root=False
-                        ).get('value')
-                    }
-
-                    for value in values:
-                        if related_components[expand_property_name]['is_many_to_many']:
-                            value[f'{expand_property_name}_rel'] = [
-                                getattr(
-                                    component_schemas, f'{expand_property_meta["component"]}GetResponse'
-                                )(**related_entity).dict(
-                                    by_alias=True,
-                                    exclude_none=True
-                                ) for related_entity in related_entities.values()
-                                if value['uid'] in related_entity[join_field]
-                            ]
-                        elif related_components[expand_property_name]['is_collection']:
-                            if apply_data_array:
-                                del related_entities[value['uid']]['datastream']
-                            value[f'{expand_property_name}_rel'] = [
-                                getattr(
-                                    component_schemas, f'{expand_property_meta["component"]}GetResponse'
-                                )(**related_entity).dict(
-                                    by_alias=True,
-                                    exclude_unset=True
-                                ) for related_entity in related_entities.values()
-                                if related_entity[join_field[:-1]] == value['uid']
-                            ] if not apply_data_array else ObservationDataArray(
-                                **related_entities.get(value['uid'])
-                            ).dict(
-                                by_alias=True,
-                                exclude_unset=True
-                            )
-                        else:
-                            value[f'{expand_property_name}_rel'] = getattr(
-                                component_schemas, f'{expand_property_meta["component"]}GetResponse'
-                            )(**related_entities[
-                                value[expand_property_meta['join_field']]
-                            ]).dict(
-                                by_alias=True,
-                                exclude_none=True
-                            )
-
-        return values
-
-    @staticmethod
-    def get_related_components(component):
-        """
-        The get_related_components function returns a dictionary of related components for the given component.
-
-        :param component: Get the related components of a specific component
-        :return: A dict of related components
-        """
-
-        many_to_many_relations = {
-            'Thing': ['Location'],
-            'Location': ['Thing', 'HistoricalLocation'],
-            'HistoricalLocation': ['Location']
-        }
-
-        return {
-            name: {
-                'component': field.type_.__name__,
-                'is_collection': True if lookup_component(name, 'snake_singular', 'camel_singular') is None else False,
-                'is_many_to_many': True if field.type_.__name__ in many_to_many_relations.get(component, []) else False
-            } for name, field in getattr(component_schemas, f'{component}Relations').__fields__.items()
-        }
-
-    @staticmethod
-    def parse_select_parameter(component, select_parameter):
-        """
-        The parse_select_parameter function takes in a component and a select_parameter.
-        If the select_parameter is not None, it splits the parameter into an array of strings.
-        It then creates an unselect_components list that contains all fields from the component's schema except for
-        those that are in the select parameter (if any). If there are no fields specified in the select parameter, or if
-        'id' is not included as one of them, it adds 'id' to this list as well.
-
-        :param component: Determine which component schema to use
-        :param select_parameter: Determine which fields are returned in the response
-        :return: A list of components that should be unselected
-        """
-
-        if not select_parameter:
-            return []
-
-        select_parameter = select_parameter.split(',')
-
-        unselect_components = [
-            field[0] for field in getattr(component_schemas, component).__fields__.items()
-            if field[1].alias not in select_parameter
-        ]
-
-        if len(select_parameter) > 0 and 'id' not in select_parameter:
-            unselect_components.append('id')
-
-        return unselect_components
-
-    def parse_expand_parameter(self, component, expand_parameter):
-        """
-        The parse_expand_parameter function takes a component and an expand_parameter as input.
-        The function returns a dictionary of related components that are to be expanded, with the following keys:
-            - component: The name of the related component (e.g., 'Observation')
-            - join_field: The field in the current table that is used to join with this related table (e.g., 'id' or
-                          'observation_id')
-            - query_params: A dictionary containing all query parameters for this specific nested request, including any
-                            $expand parameters for further nesting.
-
-        :param self: Represent the instance of the class
-        :param component: Get the related components of a component
-        :param expand_parameter: Expand the results of a query
-        :return: A dictionary of the form:
-        """
-
-        if not expand_parameter:
-            expand_parameter = ''
+        expand = query_params.get('expand') or ''
         expand_properties = {}
-        expand_components = re.split(r',(?![^(]*\))', expand_parameter)
-        related_components = self.get_related_components(component)
+        expand_components = re.split(r',(?![^(]*\))', expand)
+        related_components = component.get_related_components()
 
         for expand_component in expand_components:
             component_name = re.sub(r'(?<!^)(?=[A-Z])', '_', expand_component.split('/')[0].split('(')[0]).lower()
@@ -569,107 +641,45 @@ class SensorThingsBaseEngine(
 
             if component_name not in expand_properties:
                 expand_properties[component_name] = {
-                    'component': related_components[component_name]['component'],
-                    'join_field': 'uid' if related_components[component_name]['is_collection'] else
-                    lookup_component(
-                        related_components[component_name]['component'], 'camel_singular', 'snake_singular'
-                    ) + '_id',
-                    'join_ids': [],
-                    'query_params': nested_query_params
+                    'component': related_components[component_name],
+                    'query_params': nested_query_params,
+                    'join_ids': []
                 }
 
             if len(expand_component.split('/')) > 1:
                 expand_properties[component_name]['query_params']['$expand'] = ','.join(
                     (
                         *expand_properties[component_name]['query_params']['$expand'].split(','),
-                        expand_component.split('/')[1],
+                        '/'.join(expand_component.split('/')[1:]),
                     )
-                ) if '$expand' in expand_properties[component_name]['query_params'] else expand_component.split('/')[1]
+                ) if '$expand' in expand_properties[component_name]['query_params'] else (
+                    '/'.join(expand_component.split('/')[1:])
+                )
 
         for expand_property in expand_properties.values():
-            if expand_property['component'] == 'Observation':
-                expand_property['query_params'] = ObservationParams(**expand_property['query_params']).dict()
-            else:
-                expand_property['query_params'] = ListQueryParams(**expand_property['query_params']).dict()
+            expand_property['query_params'] = ListQueryParams(**expand_property['query_params']).dict()
 
         return expand_properties
 
     @staticmethod
-    def get_field_index(components, field):
-        """
-        The get_field_index function takes two arguments:
-            1. components - a list of strings representing the fields in a CSV file
-            2. field - the name of one of those fields
-
-        :param components: Store the list of components in a row
-        :param field: Find the index of a field in the components list
-        :return: The index of the field in the components list
-        """
-
-        try:
-            return components.index(field)
-        except ValueError:
-            return None
-
-    def convert_to_data_array(
-            self,
-            response: dict,
-            select: Union[str, None] = None
-    ):
-        """
-        The convert_to_data_array function takes a response from the Observation entity and converts it to an array of
-        observations. The function is called by the get_many method in the Observation class, which is used when
-        querying multiple observations at once. The convert_to_data_array function groups all observations by their
-        datastream id, and then creates a list of dictionaries containing each observation's phenomenon time (time) and
-        result value (value). It also adds a 'datastream' key with its corresponding datastream id.
-
-        :param self: Make the method belong to the class
-        :param response: dict: Pass the response from the get_observations function
-        :param select: Union[str: Select the fields that will be returned in the response
-        :return: A dictionary with the following keys:
-        """
-
-        if select:
-            selected_fields = [
-                field[0] for field in ObservationDataArrayFields.__fields__.items()
-                if field[1].alias in select.split(',')
-            ]
-        else:
-            selected_fields = [
-                field for field in ObservationDataArrayFields.__fields__ if field in ['phenomenon_time', 'result']
-            ]
-
-        response['value'] = [
-            {
-                'datastream_id': datastream_id,
-                'datastream': self.get_ref('Datastream', datastream_id),
-                'components': [
-                    ObservationDataArrayFields.__fields__[field].alias for field in selected_fields
-                ],
-                'data_array': [
-                    [
-                        value for field, value in ObservationDataArrayFields(**observation).dict().items()
-                        if field in selected_fields
-                    ] for observation in observations
-                ]
-            } for datastream_id, observations in groupby(response['value'], key=lambda x: x['datastream_id'])
-        ]
-
-        return response
-
-    @staticmethod
     def iso_time_interval(start_time: Optional[datetime], end_time: Optional[datetime]):
         """
-        The iso_time_interval function takes two datetime objects as input and returns a string in the format
-            start_time/end_time, where both times are formatted according to ISO 8601. If either of the inputs is None,
-            then that time will be omitted from the output string.
+        Formats a time interval in ISO 8601 format.
 
-        :param start_time: Optional[datetime]: Specify that the start_time parameter is optional
-        :param end_time: Optional[datetime]: Specify that the end_time parameter is optional
-        :return: A string that represents the time interval between two datetime objects
+        Parameters
+        ----------
+        start_time : datetime, optional
+            The start time of the interval.
+        end_time : datetime, optional
+            The end time of the interval.
+
+        Returns
+        -------
+        Optional[str]
+            The formatted ISO 8601 time interval string, or None if both times are None.
         """
 
-        if start_time and end_time:
+        if start_time and end_time and start_time != end_time:
             return start_time.isoformat(timespec='seconds') + '/' + end_time.isoformat(timespec='seconds')
         elif start_time and not end_time:
             return start_time.isoformat(timespec='seconds')
@@ -678,19 +688,137 @@ class SensorThingsBaseEngine(
         else:
             return None
 
+    def build_ref_link(self, component: Type['BaseComponent'], entity_id: id_type):
+        """
+        Builds a reference link for an entity.
 
-class SensorThingsRequest(HttpRequest):
-    """
-    The SensorThings request class.
+        Parameters
+        ----------
+        component : Type['BaseComponent']
+            The component type of the entity for which to build the reference link.
+        entity_id : id_type
+            The ID of the entity.
 
-    This class extends Django's HttpRequest class to include an engine class, component name, component path, and an
-    entity_chain tuple. These attributes should be added to the request in the SensorThings middleware before calling a
-    view function.
-    """
+        Returns
+        -------
+        str
+            The constructed reference link.
+        """
 
-    engine: SensorThingsBaseEngine
-    auth: str
-    component: str
-    component_path: List[str]
-    entity_chain: List[Tuple[str, Union[UUID, int, str]]]
-    value_only: bool
+        return (
+            f'{self.request.sensorthings_url}/'
+            f'{component.model_config["json_schema_extra"]["name_ref"][0]}('
+            f'{id_qualifier}{str(entity_id)}{id_qualifier})'
+        )
+
+    def build_next_link(
+            self,
+            query_params: dict,
+            length: int,
+            count: Optional[int] = None
+    ):
+        """
+        Builds the next link for pagination.
+
+        Parameters
+        ----------
+        query_params : dict
+            The current query parameters for pagination.
+        length : int
+            The length of the current result set.
+        count : int, optional
+            The total count of entities available.
+
+        Returns
+        -------
+        Optional[str]
+            The constructed next link for pagination, or None if there are no more pages.
+        """
+
+        top = query_params.pop('top', None)
+        skip = query_params.pop('skip', None)
+
+        if top is None:
+            top = 100
+
+        if skip is None:
+            skip = 0
+
+        if count is not None and top + skip < count or count is None and top == length:
+            query_string = ListQueryParams(
+                top=top,
+                skip=top + skip,
+                **query_params
+            ).get_query_string()
+
+            return f'{self.request.sensorthings_url}/{self.request.sensorthings_path}{query_string}'
+        else:
+            return None
+
+    def update_related_components(self, component: Type['BaseComponent'], related_entity_id: id_type):
+        """
+        Updates the related components of an entity.
+
+        Parameters
+        ----------
+        component : Type['BaseComponent']
+            The component type of the related entity.
+        related_entity_id : id_type
+            The ID of the related entity.
+
+        Returns
+        -------
+        None
+        """
+
+        if component.__name__ == 'Datastream':
+            first_observation = next(iter(self.list_entities(
+                component=field_schemas.Observation,
+                query_params=ListQueryParams(
+                    select='',
+                    filters=f'Datastream/id eq \'{str(related_entity_id)}\'',
+                    expand='Datastream',
+                    order_by='phenomenonTime asc',
+                    top=1,
+                    count=False
+                ).dict()
+            )['value']), {})
+
+            last_observation = next(iter(self.list_entities(
+                component=field_schemas.Observation,
+                query_params=ListQueryParams(
+                    select='',
+                    filters=f'Datastream/id eq \'{str(related_entity_id)}\'',
+                    expand='Datastream',
+                    order_by='phenomenonTime desc',
+                    top=1,
+                    count=False
+                ).dict()
+            )['value']), {})
+
+            phenomenon_time_range = []
+            result_time_range = []
+
+            for observation in [first_observation, last_observation]:
+                if observation.get('phenomenon_time') is not None:
+                    phenomenon_time_range.append(isoparse(observation['phenomenon_time']).replace(tzinfo=pytz.UTC))
+                else:
+                    phenomenon_time_range.append(None)
+                if observation.get('result_time') is not None:
+                    result_time_range.append(isoparse(observation['result_time']).replace(tzinfo=pytz.UTC))
+                else:
+                    result_time_range.append(None)
+
+            phenomenon_time = self.iso_time_interval(phenomenon_time_range[0], phenomenon_time_range[1])
+            result_time = self.iso_time_interval(result_time_range[0], result_time_range[1])
+            phenomenon_time = phenomenon_time.replace('+00:00', 'Z') if phenomenon_time else None  # noqa
+            result_time = result_time.replace('+00:00', 'Z') if result_time else None  # noqa
+
+            self.update_entity(
+                component=field_schemas.Datastream,
+                entity_id=related_entity_id,
+                entity_body=DatastreamPatchBody(  # noqa
+                    phenomenon_time=phenomenon_time,
+                    result_time=result_time
+                )  # noqa
+            )

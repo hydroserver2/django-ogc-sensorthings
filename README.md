@@ -22,44 +22,31 @@ MIDDLEWARE = [
 ]
 ```
 
-Then you may use a prebuilt API backend by adding one of the following to your `INSTALLED_APPS` setting:
+To initialize the SensorThings API in your project, you must create an engine class that implements all the required methods from `sensorthings.SensorThingsBaseEngine`. These methods will be used to map the SensorThings API to your data source.
+
+After setting up your custom engine class, you can initialize the SensorThings API in your urls.py file:
 
 ```
-INSTALLED_APPS = [
-	# ...
-	'sensorthings.backends.sensorthings',
-	'sensorthings.backends.odm2',
-	'sensorthings.backends.frostserver'
-	# ...
-]
-```
-
-Alternatively, you may initialize a custom SensorThings API using an existing backend as a template and adding it to your urls.py file:
-
-```
+from django.urls import path
 from sensorthings import SensorThingsAPI
+from .engine import YourCustomSensorThingsEngine
 
-# ...
 
-my_st_api = SensorThingsAPI(
-	title='My Custom SensorThings API',
-	description='A custom SensorThings API for my Django project.',
-	version='1.1',
-	backend='sensorthings'
+sta_core = SensorThingsAPI(
+    title='Test SensorThings API',
+    version='1.1',
+    description='This is an example SensorThings API.',
+    engine=YourCustomSensorThingsEngine
 )
 
-# ...
-
 urlpatterns = [
-	# ...
-	path('v1.1/', my_st_api.urls),
-	# ...
+    path('sensorthings/v1.1/', sta_core.urls),
 ]
 ```
 
-You may further customize your API instance by subclassing `sensorthings.SensorThingsAbstractEngine` to create your own SensorThings engine to pass to the API instance instead of an existing backend. This is useful if you want to map the SensorThings API endpoints to a custom database backend.
+To enable the SensorThings DataArray extension, your custom SensorThings should subclass `sensorthings.extensions.DataArrayBaseEngine` in addition to `sensorthings.SensorThingsBaseEngine`.
 
-You can also modify specific SensorThings endpoints and components using `sensorthings.SensorThingsComponent` and `sensorthings.SensorThingsEndpoint` to add custom authorization rules, disable certain endpoints, or customize SensorThings properties schemas.
+You can also modify specific SensorThings endpoints and components using `sensorthings.SensorThingsEndpoint` to add custom authorization rules, disable certain endpoints, or customize SensorThings properties schemas.
 
 ## Documentation
 
