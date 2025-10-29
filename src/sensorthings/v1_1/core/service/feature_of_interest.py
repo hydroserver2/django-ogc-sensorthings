@@ -1,0 +1,2 @@
+class FeatureOfInterestService:
+    pass

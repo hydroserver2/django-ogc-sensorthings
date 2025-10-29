@@ -1,0 +1,2 @@
+class SensorService:
+    pass
