@@ -36,7 +36,7 @@ router = Router(tags=[iot.FEATURES_OF_INTEREST])
     exclude_none=True,
     exclude_unset=True,
 )
-def get_feature_of_interest_collection(
+async def get_feature_of_interest_collection(
     request: HttpRequest,
     query: Query[CollectionQuery],
 ) -> tuple[int, FeatureOfInterestCollectionResponse]:
@@ -45,7 +45,7 @@ def get_feature_of_interest_collection(
     """
 
     try:
-        resource = sensorthings_service.get_feature_of_interest_collection(
+        resource = await sensorthings_service.get_feature_of_interest_collection(
             filter=query.filter,
             count=query.count,
             orderby=query.orderby,
@@ -68,7 +68,7 @@ def get_feature_of_interest_collection(
     ),
     response={201: None, **create_entity_error_responses},
 )
-def create_feature_of_interest(
+async def create_feature_of_interest(
     request: HttpRequest, response: HttpResponse, entity: FeatureOfInterestPostBody
 ) -> tuple[int, None]:
     """
@@ -76,7 +76,7 @@ def create_feature_of_interest(
     """
 
     try:
-        resource = sensorthings_service.create_feature_of_interest(
+        resource = await sensorthings_service.create_feature_of_interest(
             entity=entity, context=request
         )
         response.headers["Location"] = resource.iot_self_link
@@ -96,7 +96,7 @@ def create_feature_of_interest(
     exclude_none=True,
     exclude_unset=True,
 )
-def get_feature_of_interest(
+async def get_feature_of_interest(
     request: HttpRequest,
     query: Query[EntityQuery],
     entity_id: Path[app_settings.ID_TYPE],
@@ -106,7 +106,7 @@ def get_feature_of_interest(
     """
 
     try:
-        resource = sensorthings_service.get_feature_of_interest(
+        resource = await sensorthings_service.get_feature_of_interest(
             entity_id=entity_id,
             select=query.select,
             expand=query.expand,
@@ -125,7 +125,7 @@ def get_feature_of_interest(
     ),
     response={204: None, **update_entity_error_responses},
 )
-def update_feature_of_interest(
+async def update_feature_of_interest(
     request: HttpRequest,
     entity_id: Path[app_settings.ID_TYPE],
     entity: FeatureOfInterestPatchBody,
@@ -135,7 +135,7 @@ def update_feature_of_interest(
     """
 
     try:
-        sensorthings_service.update_feature_of_interest(
+        await sensorthings_service.update_feature_of_interest(
             entity_id=entity_id, entity=entity, context=request
         )
     except Exception as e:
@@ -151,7 +151,7 @@ def update_feature_of_interest(
     ),
     response={204: None, **delete_entity_error_responses},
 )
-def delete_feature_of_interest(
+async def delete_feature_of_interest(
     request: HttpRequest,
     entity_id: Path[app_settings.ID_TYPE],
 ) -> tuple[int, None]:
@@ -160,7 +160,7 @@ def delete_feature_of_interest(
     """
 
     try:
-        sensorthings_service.delete_feature_of_interest(
+        await sensorthings_service.delete_feature_of_interest(
             entity_id=entity_id, context=request
         )
     except Exception as e:

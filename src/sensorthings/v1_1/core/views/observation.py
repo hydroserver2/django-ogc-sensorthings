@@ -33,7 +33,7 @@ router = Router(tags=[iot.OBSERVATIONS])
     exclude_none=True,
     exclude_unset=True,
 )
-def get_observation_collection(
+async def get_observation_collection(
     request: HttpRequest,
     query: Query[CollectionQuery],
 ) -> tuple[int, ObservationCollectionResponse]:
@@ -42,7 +42,7 @@ def get_observation_collection(
     """
 
     try:
-        resource = sensorthings_service.get_observation_collection(
+        resource = await sensorthings_service.get_observation_collection(
             filter=query.filter,
             count=query.count,
             orderby=query.orderby,
@@ -65,7 +65,7 @@ def get_observation_collection(
     ),
     response={201: None, **create_entity_error_responses},
 )
-def create_observation(
+async def create_observation(
     request: HttpRequest,
     response: HttpResponse,
     entity: ObservationPostBody,
@@ -75,7 +75,7 @@ def create_observation(
     """
 
     try:
-        resource = sensorthings_service.create_observation(
+        resource = await sensorthings_service.create_observation(
             entity=entity, context=request
         )
         response.headers["Location"] = resource.iot_self_link
@@ -95,7 +95,7 @@ def create_observation(
     exclude_none=True,
     exclude_unset=True,
 )
-def get_observation(
+async def get_observation(
     request: HttpRequest,
     query: Query[EntityQuery],
     entity_id: Path[app_settings.ID_TYPE],
@@ -105,7 +105,7 @@ def get_observation(
     """
 
     try:
-        resource = sensorthings_service.get_observation(
+        resource = await sensorthings_service.get_observation(
             entity_id=entity_id,
             select=query.select,
             expand=query.expand,
@@ -124,7 +124,7 @@ def get_observation(
     ),
     response={204: None, **update_entity_error_responses},
 )
-def update_observation(
+async def update_observation(
     request: HttpRequest,
     entity_id: Path[app_settings.ID_TYPE],
     entity: ObservationPatchBody,
@@ -134,7 +134,7 @@ def update_observation(
     """
 
     try:
-        sensorthings_service.update_observation(
+        await sensorthings_service.update_observation(
             entity_id=entity_id, entity=entity, context=request
         )
     except Exception as e:
@@ -150,7 +150,7 @@ def update_observation(
     ),
     response={204: None, **delete_entity_error_responses},
 )
-def delete_observation(
+async def delete_observation(
     request: HttpRequest,
     entity_id: Path[app_settings.ID_TYPE],
 ) -> tuple[int, None]:
@@ -159,7 +159,7 @@ def delete_observation(
     """
 
     try:
-        sensorthings_service.delete_observation(entity_id=entity_id, context=request)
+        await sensorthings_service.delete_observation(entity_id=entity_id, context=request)
     except Exception as e:
         raise http_error(e)
 

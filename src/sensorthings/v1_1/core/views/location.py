@@ -33,7 +33,7 @@ router = Router(tags=[iot.LOCATIONS])
     exclude_none=True,
     exclude_unset=True,
 )
-def get_location_collection(
+async def get_location_collection(
     request: HttpRequest,
     query: Query[CollectionQuery],
 ) -> tuple[int, LocationCollectionResponse]:
@@ -42,7 +42,7 @@ def get_location_collection(
     """
 
     try:
-        resource = sensorthings_service.get_location_collection(
+        resource = await sensorthings_service.get_location_collection(
             filter=query.filter,
             count=query.count,
             orderby=query.orderby,
@@ -65,7 +65,7 @@ def get_location_collection(
     ),
     response={201: None, **create_entity_error_responses},
 )
-def create_location(
+async def create_location(
     request: HttpRequest, response: HttpResponse, entity: LocationPostBody
 ) -> tuple[int, None]:
     """
@@ -73,7 +73,7 @@ def create_location(
     """
 
     try:
-        resource = sensorthings_service.create_location(entity=entity, context=request)
+        resource = await sensorthings_service.create_location(entity=entity, context=request)
         response.headers["Location"] = resource.iot_self_link
     except Exception as e:
         raise http_error(e)
@@ -91,7 +91,7 @@ def create_location(
     exclude_none=True,
     exclude_unset=True,
 )
-def get_location(
+async def get_location(
     request: HttpRequest,
     query: Query[EntityQuery],
     entity_id: Path[app_settings.ID_TYPE],
@@ -101,7 +101,7 @@ def get_location(
     """
 
     try:
-        resource = sensorthings_service.get_location(
+        resource = await sensorthings_service.get_location(
             entity_id=entity_id,
             select=query.select,
             expand=query.expand,
@@ -120,7 +120,7 @@ def get_location(
     ),
     response={204: None, **update_entity_error_responses},
 )
-def update_location(
+async def update_location(
     request: HttpRequest,
     entity_id: Path[app_settings.ID_TYPE],
     entity: LocationPatchBody,
@@ -130,7 +130,7 @@ def update_location(
     """
 
     try:
-        sensorthings_service.update_location(
+        await sensorthings_service.update_location(
             entity_id=entity_id, entity=entity, context=request
         )
     except Exception as e:
@@ -146,7 +146,7 @@ def update_location(
     ),
     response={204: None, **delete_entity_error_responses},
 )
-def delete_location(
+async def delete_location(
     request: HttpRequest,
     entity_id: Path[app_settings.ID_TYPE],
 ) -> tuple[int, None]:
@@ -155,7 +155,7 @@ def delete_location(
     """
 
     try:
-        sensorthings_service.delete_location(entity_id=entity_id, context=request)
+        await sensorthings_service.delete_location(entity_id=entity_id, context=request)
     except Exception as e:
         raise http_error(e)
 

@@ -33,7 +33,7 @@ router = Router(tags=[iot.DATASTREAMS])
     exclude_none=True,
     exclude_unset=True,
 )
-def get_datastream_collection(
+async def get_datastream_collection(
     request: HttpRequest,
     query: Query[CollectionQuery],
 ) -> tuple[int, DatastreamCollectionResponse]:
@@ -42,7 +42,7 @@ def get_datastream_collection(
     """
 
     try:
-        resource = sensorthings_service.get_datastream_collection(
+        resource = await sensorthings_service.get_datastream_collection(
             filter=query.filter,
             count=query.count,
             orderby=query.orderby,
@@ -65,7 +65,7 @@ def get_datastream_collection(
     ),
     response={201: None, **create_entity_error_responses},
 )
-def create_datastream(
+async def create_datastream(
     request: HttpRequest, response: HttpResponse, entity: DatastreamPostBody
 ) -> tuple[int, None]:
     """
@@ -73,7 +73,7 @@ def create_datastream(
     """
 
     try:
-        resource = sensorthings_service.create_datastream(
+        resource = await sensorthings_service.create_datastream(
             entity=entity, context=request
         )
         response.headers["Location"] = resource.iot_self_link
@@ -93,7 +93,7 @@ def create_datastream(
     exclude_none=True,
     exclude_unset=True,
 )
-def get_datastream(
+async def get_datastream(
     request: HttpRequest,
     query: Query[EntityQuery],
     entity_id: Path[app_settings.ID_TYPE],
@@ -103,7 +103,7 @@ def get_datastream(
     """
 
     try:
-        resource = sensorthings_service.get_datastream(
+        resource = await sensorthings_service.get_datastream(
             entity_id=entity_id,
             select=query.select,
             expand=query.expand,
@@ -122,7 +122,7 @@ def get_datastream(
     ),
     response={204: None, **update_entity_error_responses},
 )
-def update_datastream(
+async def update_datastream(
     request: HttpRequest,
     entity_id: Path[app_settings.ID_TYPE],
     entity: DatastreamPatchBody,
@@ -132,7 +132,7 @@ def update_datastream(
     """
 
     try:
-        sensorthings_service.update_datastream(
+        await sensorthings_service.update_datastream(
             entity_id=entity_id, entity=entity, context=request
         )
     except Exception as e:
@@ -148,7 +148,7 @@ def update_datastream(
     ),
     response={204: None, **delete_entity_error_responses},
 )
-def delete_datastream(
+async def delete_datastream(
     request: HttpRequest,
     entity_id: Path[app_settings.ID_TYPE],
 ) -> tuple[int, None]:
@@ -157,7 +157,7 @@ def delete_datastream(
     """
 
     try:
-        sensorthings_service.delete_datastream(entity_id=entity_id, context=request)
+        await sensorthings_service.delete_datastream(entity_id=entity_id, context=request)
     except Exception as e:
         raise http_error(e)
 

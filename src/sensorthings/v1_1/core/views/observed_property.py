@@ -36,7 +36,7 @@ router = Router(tags=[iot.OBSERVED_PROPERTIES])
     exclude_none=True,
     exclude_unset=True,
 )
-def get_observed_property_collection(
+async def get_observed_property_collection(
     request: HttpRequest,
     query: Query[CollectionQuery],
 ) -> tuple[int, ObservedPropertyCollectionResponse]:
@@ -44,7 +44,7 @@ def get_observed_property_collection(
     Retrieve a collection of `ObservedProperty` entities.
     """
     try:
-        resource = sensorthings_service.get_observed_property_collection(
+        resource = await sensorthings_service.get_observed_property_collection(
             filter=query.filter,
             count=query.count,
             orderby=query.orderby,
@@ -67,7 +67,7 @@ def get_observed_property_collection(
     ),
     response={201: None, **create_entity_error_responses},
 )
-def create_observed_property(
+async def create_observed_property(
     request: HttpRequest,
     response: HttpResponse,
     entity: ObservedPropertyPostBody,
@@ -77,7 +77,7 @@ def create_observed_property(
     """
 
     try:
-        resource = sensorthings_service.create_observed_property(
+        resource = await sensorthings_service.create_observed_property(
             entity=entity, context=request
         )
         response.headers["Location"] = resource.iot_self_link
@@ -97,7 +97,7 @@ def create_observed_property(
     exclude_none=True,
     exclude_unset=True,
 )
-def get_observed_property(
+async def get_observed_property(
     request: HttpRequest,
     query: Query[EntityQuery],
     entity_id: Path[app_settings.ID_TYPE],
@@ -107,7 +107,7 @@ def get_observed_property(
     """
 
     try:
-        resource = sensorthings_service.get_observed_property(
+        resource = await sensorthings_service.get_observed_property(
             entity_id=entity_id,
             select=query.select,
             expand=query.expand,
@@ -126,7 +126,7 @@ def get_observed_property(
     ),
     response={204: None, **update_entity_error_responses},
 )
-def update_observed_property(
+async def update_observed_property(
     request: HttpRequest,
     entity_id: Path[app_settings.ID_TYPE],
     entity: ObservedPropertyPatchBody,
@@ -136,7 +136,7 @@ def update_observed_property(
     """
 
     try:
-        sensorthings_service.update_observed_property(
+        await sensorthings_service.update_observed_property(
             entity_id=entity_id, entity=entity, context=request
         )
     except Exception as e:
@@ -152,7 +152,7 @@ def update_observed_property(
     ),
     response={204: None, **delete_entity_error_responses},
 )
-def delete_observed_property(
+async def delete_observed_property(
     request: HttpRequest,
     entity_id: Path[app_settings.ID_TYPE],
 ) -> tuple[int, None]:
@@ -161,7 +161,7 @@ def delete_observed_property(
     """
 
     try:
-        sensorthings_service.delete_observed_property(
+        await sensorthings_service.delete_observed_property(
             entity_id=entity_id, context=request
         )
     except Exception as e:

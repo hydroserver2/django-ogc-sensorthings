@@ -33,7 +33,7 @@ router = Router(tags=[iot.SENSORS])
     exclude_none=True,
     exclude_unset=True,
 )
-def get_sensor_collection(
+async def get_sensor_collection(
     request: HttpRequest,
     query: Query[CollectionQuery],
 ) -> tuple[int, SensorCollectionResponse]:
@@ -42,7 +42,7 @@ def get_sensor_collection(
     """
 
     try:
-        resource = sensorthings_service.get_sensor_collection(
+        resource = await sensorthings_service.get_sensor_collection(
             filter=query.filter,
             count=query.count,
             orderby=query.orderby,
@@ -65,7 +65,7 @@ def get_sensor_collection(
     ),
     response={201: None, **create_entity_error_responses},
 )
-def create_sensor(
+async def create_sensor(
     request: HttpRequest,
     response: HttpResponse,
     entity: SensorPostBody,
@@ -75,7 +75,7 @@ def create_sensor(
     """
 
     try:
-        resource = sensorthings_service.create_sensor(entity=entity, context=request)
+        resource = await sensorthings_service.create_sensor(entity=entity, context=request)
         response.headers["Location"] = resource.iot_self_link
     except Exception as e:
         raise http_error(e)
@@ -93,7 +93,7 @@ def create_sensor(
     exclude_none=True,
     exclude_unset=True,
 )
-def get_sensor(
+async def get_sensor(
     request: HttpRequest,
     query: Query[EntityQuery],
     entity_id: Path[app_settings.ID_TYPE],
@@ -103,7 +103,7 @@ def get_sensor(
     """
 
     try:
-        resource = sensorthings_service.get_sensor(
+        resource = await sensorthings_service.get_sensor(
             entity_id=entity_id,
             select=query.select,
             expand=query.expand,
@@ -122,7 +122,7 @@ def get_sensor(
     ),
     response={204: None, **update_entity_error_responses},
 )
-def update_sensor(
+async def update_sensor(
     request: HttpRequest,
     entity_id: Path[app_settings.ID_TYPE],
     entity: SensorPatchBody,
@@ -132,7 +132,7 @@ def update_sensor(
     """
 
     try:
-        sensorthings_service.update_sensor(
+        await sensorthings_service.update_sensor(
             entity_id=entity_id, entity=entity, context=request
         )
     except Exception as e:
@@ -148,7 +148,7 @@ def update_sensor(
     ),
     response={204: None, **delete_entity_error_responses},
 )
-def delete_sensor(
+async def delete_sensor(
     request: HttpRequest,
     entity_id: Path[app_settings.ID_TYPE],
 ) -> tuple[int, None]:
@@ -157,7 +157,7 @@ def delete_sensor(
     """
 
     try:
-        sensorthings_service.delete_sensor(entity_id=entity_id, context=request)
+        await sensorthings_service.delete_sensor(entity_id=entity_id, context=request)
     except Exception as e:
         raise http_error(e)
 
