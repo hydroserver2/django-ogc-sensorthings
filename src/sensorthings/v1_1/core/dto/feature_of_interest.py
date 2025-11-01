@@ -9,7 +9,9 @@ from .base import BaseEntityDTO
 class FeatureOfInterestDTO(BaseEntityDTO):
     name: Optional[str] = None
     description: Optional[str] = None
-    encoding_type: Optional[app_settings.FEATURE_OF_INTEREST_ENCODING_TYPE_VALUE_LITERAL] = None
+    encoding_type: Optional[
+        app_settings.FEATURE_OF_INTEREST_ENCODING_TYPE_VALUE_LITERAL
+    ] = None
     feature: Optional[app_settings.FEATURE_OF_INTEREST_ENCODING_TYPE_SCHEMA] = None
     properties: Optional[app_settings.PROPERTIES_SCHEMAS.get("Location", Dict)] = None
 

@@ -18,7 +18,7 @@ class BaseEntityDTO:
     def build_response(
         self,
         select: Optional[List[str]] = None,
-        expand: Optional[Dict[str, Union["CollectionDTO", "BaseEntityDTO"]]] = None
+        expand: Optional[Dict[str, Union["CollectionDTO", "BaseEntityDTO"]]] = None,
     ):
         select_set = set(select or [])
         expand_keys = set(expand or {})
@@ -26,15 +26,27 @@ class BaseEntityDTO:
         for related_entity in self._related_entities:
             related_entity_ref = to_snake(related_entity)
             related_entity_link_ref = f"{related_entity_ref}_link"
-            related_nav_link = iot.build_nav_link(self._entity, self.iot_id, related_entity)
+            related_nav_link = iot.build_nav_link(
+                self._entity, self.iot_id, related_entity
+            )
 
-            if (not select_set or related_entity_link_ref in select_set) and related_entity_ref not in expand_keys:
+            if (
+                not select_set or related_entity_link_ref in select_set
+            ) and related_entity_ref not in expand_keys:
                 setattr(self, related_entity_link_ref, related_nav_link)
 
             if related_entity_ref in expand_keys:  # TODO
-                setattr(self, f"{related_entity_ref}_count", expand[related_entity_ref]["count"])
+                setattr(
+                    self,
+                    f"{related_entity_ref}_count",
+                    expand[related_entity_ref]["count"],
+                )
                 setattr(self, related_entity_ref, expand[related_entity_ref]["value"])
-                setattr(self, f"{related_entity_ref}_next_link", f"{related_nav_link}?$skip=100&$top=100")
+                setattr(
+                    self,
+                    f"{related_entity_ref}_next_link",
+                    f"{related_nav_link}?$skip=100&$top=100",
+                )
 
         if select_set:
             for f in fields(self):
@@ -48,7 +60,9 @@ class CollectionDTO(Generic[T]):
     value: List[BaseEntityDTO] = field(default_factory=list)
 
     def build_response(self):  # TODO
-        setattr(self, "iot_next_link", "http://www.example.com/replace?$top=100&$skip=100")
+        setattr(
+            self, "iot_next_link", "http://www.example.com/replace?$top=100&$skip=100"
+        )
 
         for entity in self.value:
             entity.build_response()
@@ -57,4 +71,6 @@ class CollectionDTO(Generic[T]):
 @dataclass
 class GroupedCollectionDTO(Generic[T]):
     grouped_by: Optional[str] = None
-    groups: Dict[Optional[app_settings.ID_TYPE], CollectionDTO[T]] = field(default_factory=dict)
+    groups: Dict[Optional[app_settings.ID_TYPE], CollectionDTO[T]] = field(
+        default_factory=dict
+    )

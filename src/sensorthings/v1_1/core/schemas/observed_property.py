@@ -1,41 +1,67 @@
-from typing import Optional, Dict, List, Union, TYPE_CHECKING
+from typing import Union, ClassVar, TYPE_CHECKING
 from ninja import Field
-from sensorthings.v1_1.core import iot
+from sensorthings.types import Absent
+from sensorthings.v1_1 import iot
 from sensorthings.v1_1.conf import app_settings
-from .base import BaseSchema, BaseEntitySchema, BaseCollectionSchema, IdSchema
+from .base import (
+    BaseSchema,
+    BaseEntitySchema,
+    BaseCollectionSchema,
+    IdSchema,
+    PartialMetaclass,
+)
 
 if TYPE_CHECKING:
     from .datastream import DatastreamResponse, DatastreamPostBody
 
 
 class ObservedPropertyFields(BaseSchema):
+    """Base schema for `ObservedProperty` entity fields."""
+
     name: str
     definition: str
     description: str
-    properties: Optional[app_settings.PROPERTIES_SCHEMAS.get("ObservedProperty", Dict)] = None
+    properties: app_settings.PROPERTIES_SCHEMAS.get(iot.OBSERVED_PROPERTY, dict) = (
+        Absent
+    )
 
 
-class ObservedPropertyResponse(ObservedPropertyFields, BaseEntitySchema):
-    _entity = iot.OBSERVED_PROPERTIES
-    _related_entities = [iot.DATASTREAMS]
+class ObservedPropertyResponse(
+    ObservedPropertyFields, BaseEntitySchema, metaclass=PartialMetaclass
+):
+    """GET response schema representing a `ObservedProperty` entity."""
 
-    datastreams_link: Optional[str] = Field(None, alias=iot.DATASTREAMS + iot.NAVIGATION_LINK)
-    datastreams_count: Optional[int] = Field(None, alias=iot.DATASTREAMS + iot.COUNT)
-    datastreams: Optional[List["DatastreamResponse"]] = Field(None, alias=iot.DATASTREAMS)
-    datastreams_next_link: Optional[str] = Field(None, alias=iot.DATASTREAMS + iot.NEXT_LINK)
+    _entity: ClassVar[str] = iot.OBSERVED_PROPERTIES
+    _related_entities: ClassVar[list[str]] = [iot.DATASTREAMS]
+
+    datastreams_link: str = Field(Absent, alias=iot.DATASTREAMS + iot.NAVIGATION_LINK)
+    datastreams_count: int = Field(Absent, alias=iot.DATASTREAMS + iot.COUNT)
+    datastreams: list["DatastreamResponse"] = Field(Absent, alias=iot.DATASTREAMS)
+    datastreams_next_link: str = Field(Absent, alias=iot.DATASTREAMS + iot.NEXT_LINK)
 
 
-class ObservedPropertyCollectionResponse(BaseCollectionSchema[ObservedPropertyResponse]):
-    _entity = iot.OBSERVED_PROPERTIES
+class ObservedPropertyCollectionResponse(
+    BaseCollectionSchema[ObservedPropertyResponse]
+):
+    """GET response schema representing a collection of `ObservedProperty` entities."""
+
+    _entity: ClassVar[str] = iot.OBSERVED_PROPERTIES
 
 
 class ObservedPropertyPostBody(ObservedPropertyFields):
-    datastreams: List[Union[IdSchema, "DatastreamPostBody"]] = Field(None, alias=iot.DATASTREAMS)
+    """POST body schema for creating a new `ObservedProperty` entity."""
+
+    datastreams: list[Union[IdSchema, "DatastreamPostBody"]] = Field(
+        Absent, alias=iot.DATASTREAMS
+    )
 
 
-class ObservedPropertyPatchBody(ObservedPropertyFields):
-    datastreams: List[IdSchema] = Field(None, alias=iot.DATASTREAMS)
+class ObservedPropertyPatchBody(ObservedPropertyFields, metaclass=PartialMetaclass):
+    """PATCH body schema for partially updating `ObservedProperty` entities."""
+
+    datastreams: list[IdSchema] = Field(Absent, alias=iot.DATASTREAMS)
 
 
 ObservedPropertyResponse.add_examples()
 ObservedPropertyCollectionResponse.add_examples()
+ObservedPropertyPatchBody.model_rebuild(force=True)

@@ -4,26 +4,49 @@ from pydantic_core import CoreSchema, core_schema
 
 
 class AbsentType:
-    def __repr__(self):
+    """
+    Singleton type representing a field or value that is intentionally absent.
+
+    This can be used in Pydantic models to mark a value as unset or excluded
+    from serialization.
+    """
+
+    def __repr__(self) -> str:
+        """Return a string representation of the AbsentType singleton."""
+
         return "<ABSENT>"
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
+        """Always evaluate as False in boolean contexts."""
+
         return False
 
     @classmethod
     def __get_pydantic_core_schema__(
-            cls, source_type: Any, handler: GetCoreSchemaHandler
+        cls, source_type: Any, handler: GetCoreSchemaHandler
     ) -> CoreSchema:
+        """
+        Return a Pydantic core schema for AbsentType.
 
-        def serialize(value: Any):
+        This allows Pydantic models to validate and serialize fields
+        using this type.
+        """
+
+        def serialize(value: Any) -> None:
+            """Serialize AbsentType as None for JSON output."""
+
             return None
 
-        def validate(value: Any):
+        def validate(value: Any) -> type["AbsentType"]:
+            """Validate any value as AbsentType."""
+
             return cls
 
-        schema = core_schema.union_schema([
-            core_schema.is_instance_schema(cls),
-        ])
+        schema = core_schema.union_schema(
+            [
+                core_schema.is_instance_schema(cls),
+            ]
+        )
 
         return core_schema.no_info_after_validator_function(
             validate,

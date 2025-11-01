@@ -2,11 +2,22 @@ from ninja import Router, Path, Query
 from django.http import HttpRequest, HttpResponse
 from sensorthings.v1_1.core import iot
 from sensorthings.v1_1.core.service import sensorthings_service
-from sensorthings.v1_1.core.schemas import (CollectionQuery, EntityQuery, SensorCollectionResponse, SensorResponse,
-                                            SensorPostBody, SensorPatchBody)
-from sensorthings.v1_1.http import (get_collection_error_responses, get_entity_error_responses,
-                                    create_entity_error_responses, update_entity_error_responses,
-                                    delete_entity_error_responses, http_error)
+from sensorthings.v1_1.core.schemas import (
+    CollectionQuery,
+    EntityQuery,
+    SensorCollectionResponse,
+    SensorResponse,
+    SensorPostBody,
+    SensorPatchBody,
+)
+from sensorthings.v1_1.http import (
+    get_collection_error_responses,
+    get_entity_error_responses,
+    create_entity_error_responses,
+    update_entity_error_responses,
+    delete_entity_error_responses,
+    http_error,
+)
 from sensorthings.v1_1.conf import app_settings
 
 router = Router(tags=[iot.SENSORS])
@@ -14,11 +25,10 @@ router = Router(tags=[iot.SENSORS])
 
 @router.get(
     iot.SENSORS,
-    auth=app_settings.AUTH_HANDLERS.get("get_sensor_collection", app_settings.DEFAULT_AUTH_HANDLER),
-    response={
-        200: SensorCollectionResponse,
-        **get_collection_error_responses
-    },
+    auth=app_settings.AUTH_HANDLERS.get(
+        "get_sensor_collection", app_settings.DEFAULT_AUTH_HANDLER
+    ),
+    response={200: SensorCollectionResponse, **get_collection_error_responses},
     by_alias=True,
     exclude_none=True,
     exclude_unset=True,
@@ -26,8 +36,10 @@ router = Router(tags=[iot.SENSORS])
 def get_sensor_collection(
     request: HttpRequest,
     query: Query[CollectionQuery],
-):
-    """"""
+) -> tuple[int, SensorCollectionResponse]:
+    """
+    Retrieve a collection of `Sensor` entities.
+    """
 
     try:
         resource = sensorthings_service.get_sensor_collection(
@@ -38,7 +50,7 @@ def get_sensor_collection(
             top=query.top,
             select=query.select,
             expand=query.expand,
-            context=request
+            context=request,
         )
     except Exception as e:
         raise e
@@ -48,24 +60,22 @@ def get_sensor_collection(
 
 @router.post(
     iot.SENSORS,
-    auth=app_settings.AUTH_HANDLERS.get("create_sensor", app_settings.DEFAULT_AUTH_HANDLER),
-    response={
-        201: None,
-        **create_entity_error_responses
-    },
+    auth=app_settings.AUTH_HANDLERS.get(
+        "create_sensor", app_settings.DEFAULT_AUTH_HANDLER
+    ),
+    response={201: None, **create_entity_error_responses},
 )
 def create_sensor(
     request: HttpRequest,
     response: HttpResponse,
-    entity: SensorPostBody
-):
-    """"""
+    entity: SensorPostBody,
+) -> tuple[int, None]:
+    """
+    Create a new `Sensor` entity.
+    """
 
     try:
-        resource = sensorthings_service.create_sensor(
-            entity=entity,
-            context=request
-        )
+        resource = sensorthings_service.create_sensor(entity=entity, context=request)
         response.headers["Location"] = resource.iot_self_link
     except Exception as e:
         raise http_error(e)
@@ -75,11 +85,10 @@ def create_sensor(
 
 @router.get(
     f"{iot.SENSORS}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
-    auth=app_settings.AUTH_HANDLERS.get("get_sensor", app_settings.DEFAULT_AUTH_HANDLER),
-    response={
-        200: SensorResponse,
-        **get_entity_error_responses
-    },
+    auth=app_settings.AUTH_HANDLERS.get(
+        "get_sensor", app_settings.DEFAULT_AUTH_HANDLER
+    ),
+    response={200: SensorResponse, **get_entity_error_responses},
     by_alias=True,
     exclude_none=True,
     exclude_unset=True,
@@ -87,16 +96,18 @@ def create_sensor(
 def get_sensor(
     request: HttpRequest,
     query: Query[EntityQuery],
-    entity_id: Path[app_settings.ID_TYPE]
-):
-    """"""
+    entity_id: Path[app_settings.ID_TYPE],
+) -> tuple[int, SensorResponse]:
+    """
+    Retrieve a single `Sensor` entity by ID.
+    """
 
     try:
         resource = sensorthings_service.get_sensor(
             entity_id=entity_id,
             select=query.select,
             expand=query.expand,
-            context=request
+            context=request,
         )
     except Exception as e:
         raise http_error(e)
@@ -106,24 +117,23 @@ def get_sensor(
 
 @router.patch(
     f"{iot.SENSORS}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
-    auth=app_settings.AUTH_HANDLERS.get("update_sensor", app_settings.DEFAULT_AUTH_HANDLER),
-    response={
-        204: None,
-        **update_entity_error_responses
-    },
+    auth=app_settings.AUTH_HANDLERS.get(
+        "update_sensor", app_settings.DEFAULT_AUTH_HANDLER
+    ),
+    response={204: None, **update_entity_error_responses},
 )
 def update_sensor(
     request: HttpRequest,
     entity_id: Path[app_settings.ID_TYPE],
-    entity: SensorPatchBody
-):
-    """"""
+    entity: SensorPatchBody,
+) -> tuple[int, None]:
+    """
+    Update an existing `Sensor` entity.
+    """
 
     try:
         sensorthings_service.update_sensor(
-            entity_id=entity_id,
-            entity=entity,
-            context=request
+            entity_id=entity_id, entity=entity, context=request
         )
     except Exception as e:
         raise http_error(e)
@@ -133,23 +143,21 @@ def update_sensor(
 
 @router.delete(
     f"{iot.SENSORS}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
-    auth=app_settings.AUTH_HANDLERS.get("delete_sensor", app_settings.DEFAULT_AUTH_HANDLER),
-    response={
-        204: None,
-        **delete_entity_error_responses
-    },
+    auth=app_settings.AUTH_HANDLERS.get(
+        "delete_sensor", app_settings.DEFAULT_AUTH_HANDLER
+    ),
+    response={204: None, **delete_entity_error_responses},
 )
 def delete_sensor(
     request: HttpRequest,
     entity_id: Path[app_settings.ID_TYPE],
-):
-    """"""
+) -> tuple[int, None]:
+    """
+    Delete a `Sensor` entity by ID.
+    """
 
     try:
-        sensorthings_service.delete_sensor(
-            entity_id=entity_id,
-            context=request
-        )
+        sensorthings_service.delete_sensor(entity_id=entity_id, context=request)
     except Exception as e:
         raise http_error(e)
 

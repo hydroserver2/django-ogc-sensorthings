@@ -7,6 +7,13 @@ from .datastream import DatastreamService
 from .feature_of_interest import FeatureOfInterestService
 
 
-class SensorThingsService(ThingService, LocationService, HistoricalLocationService, ObservedPropertyService,
-                          SensorService, DatastreamService, FeatureOfInterestService):
+class SensorThingsService(
+    ThingService,
+    LocationService,
+    HistoricalLocationService,
+    ObservedPropertyService,
+    SensorService,
+    DatastreamService,
+    FeatureOfInterestService,
+):
     pass

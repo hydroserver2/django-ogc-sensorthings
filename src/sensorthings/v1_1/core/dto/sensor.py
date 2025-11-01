@@ -9,7 +9,9 @@ from .base import BaseEntityDTO
 class SensorDTO(BaseEntityDTO):
     name: Optional[str] = None
     description: Optional[str] = None
-    encoding_type: Optional[app_settings.SENSOR_METADATA_ENCODING_TYPE_VALUE_LITERAL] = None
+    encoding_type: Optional[
+        app_settings.SENSOR_METADATA_ENCODING_TYPE_VALUE_LITERAL
+    ] = None
     metadata: Optional[app_settings.SENSOR_METADATA_ENCODING_TYPE_SCHEMA] = None
     properties: Optional[Dict] = None
 

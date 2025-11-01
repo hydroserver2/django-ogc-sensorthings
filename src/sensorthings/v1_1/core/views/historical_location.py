@@ -2,12 +2,22 @@ from ninja import Router, Path, Query
 from django.http import HttpRequest, HttpResponse
 from sensorthings.v1_1.core import iot
 from sensorthings.v1_1.core.service import sensorthings_service
-from sensorthings.v1_1.core.schemas import (CollectionQuery, EntityQuery, HistoricalLocationCollectionResponse,
-                                            HistoricalLocationResponse, HistoricalLocationPostBody,
-                                            HistoricalLocationPatchBody)
-from sensorthings.v1_1.http import (get_collection_error_responses, get_entity_error_responses,
-                                    create_entity_error_responses, update_entity_error_responses,
-                                    delete_entity_error_responses, http_error)
+from sensorthings.v1_1.core.schemas import (
+    CollectionQuery,
+    EntityQuery,
+    HistoricalLocationCollectionResponse,
+    HistoricalLocationResponse,
+    HistoricalLocationPostBody,
+    HistoricalLocationPatchBody,
+)
+from sensorthings.v1_1.http import (
+    get_collection_error_responses,
+    get_entity_error_responses,
+    create_entity_error_responses,
+    update_entity_error_responses,
+    delete_entity_error_responses,
+    http_error,
+)
 from sensorthings.v1_1.conf import app_settings
 
 router = Router(tags=[iot.HISTORICAL_LOCATIONS])
@@ -15,10 +25,12 @@ router = Router(tags=[iot.HISTORICAL_LOCATIONS])
 
 @router.get(
     iot.HISTORICAL_LOCATIONS,
-    auth=app_settings.AUTH_HANDLERS.get("get_historical_location_collection", app_settings.DEFAULT_AUTH_HANDLER),
+    auth=app_settings.AUTH_HANDLERS.get(
+        "get_historical_location_collection", app_settings.DEFAULT_AUTH_HANDLER
+    ),
     response={
         200: HistoricalLocationCollectionResponse,
-        **get_collection_error_responses
+        **get_collection_error_responses,
     },
     by_alias=True,
     exclude_none=True,
@@ -27,8 +39,10 @@ router = Router(tags=[iot.HISTORICAL_LOCATIONS])
 def get_historical_location_collection(
     request: HttpRequest,
     query: Query[CollectionQuery],
-):
-    """"""
+) -> tuple[int, HistoricalLocationCollectionResponse]:
+    """
+    Retrieve a collection of `HistoricalLocation` entities.
+    """
 
     try:
         resource = sensorthings_service.get_historical_location_collection(
@@ -39,7 +53,7 @@ def get_historical_location_collection(
             top=query.top,
             select=query.select,
             expand=query.expand,
-            context=request
+            context=request,
         )
     except Exception as e:
         raise e
@@ -49,23 +63,21 @@ def get_historical_location_collection(
 
 @router.post(
     iot.HISTORICAL_LOCATIONS,
-    auth=app_settings.AUTH_HANDLERS.get("create_historical_location", app_settings.DEFAULT_AUTH_HANDLER),
-    response={
-        201: None,
-        **create_entity_error_responses
-    },
+    auth=app_settings.AUTH_HANDLERS.get(
+        "create_historical_location", app_settings.DEFAULT_AUTH_HANDLER
+    ),
+    response={201: None, **create_entity_error_responses},
 )
 def create_historical_location(
-    request: HttpRequest,
-    response: HttpResponse,
-    entity: HistoricalLocationPostBody
-):
-    """"""
+    request: HttpRequest, response: HttpResponse, entity: HistoricalLocationPostBody
+) -> tuple[int, None]:
+    """
+    Create a new `HistoricalLocation` entity.
+    """
 
     try:
         resource = sensorthings_service.create_historical_location(
-            entity=entity,
-            context=request
+            entity=entity, context=request
         )
         response.headers["Location"] = resource.iot_self_link
     except Exception as e:
@@ -76,11 +88,10 @@ def create_historical_location(
 
 @router.get(
     f"{iot.HISTORICAL_LOCATIONS}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
-    auth=app_settings.AUTH_HANDLERS.get("get_historical_location", app_settings.DEFAULT_AUTH_HANDLER),
-    response={
-        200: HistoricalLocationResponse,
-        **get_entity_error_responses
-    },
+    auth=app_settings.AUTH_HANDLERS.get(
+        "get_historical_location", app_settings.DEFAULT_AUTH_HANDLER
+    ),
+    response={200: HistoricalLocationResponse, **get_entity_error_responses},
     by_alias=True,
     exclude_none=True,
     exclude_unset=True,
@@ -88,16 +99,18 @@ def create_historical_location(
 def get_historical_location(
     request: HttpRequest,
     query: Query[EntityQuery],
-    entity_id: Path[app_settings.ID_TYPE]
-):
-    """"""
+    entity_id: Path[app_settings.ID_TYPE],
+) -> tuple[int, HistoricalLocationResponse]:
+    """
+    Retrieve a single `HistoricalLocation` entity by ID.
+    """
 
     try:
         resource = sensorthings_service.get_historical_location(
             entity_id=entity_id,
             select=query.select,
             expand=query.expand,
-            context=request
+            context=request,
         )
     except Exception as e:
         raise http_error(e)
@@ -107,24 +120,23 @@ def get_historical_location(
 
 @router.patch(
     f"{iot.HISTORICAL_LOCATIONS}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
-    auth=app_settings.AUTH_HANDLERS.get("update_historical_location", app_settings.DEFAULT_AUTH_HANDLER),
-    response={
-        204: None,
-        **update_entity_error_responses
-    },
+    auth=app_settings.AUTH_HANDLERS.get(
+        "update_historical_location", app_settings.DEFAULT_AUTH_HANDLER
+    ),
+    response={204: None, **update_entity_error_responses},
 )
 def update_historical_location(
     request: HttpRequest,
     entity_id: Path[app_settings.ID_TYPE],
-    entity: HistoricalLocationPatchBody
-):
-    """"""
+    entity: HistoricalLocationPatchBody,
+) -> tuple[int, None]:
+    """
+    Update an existing `HistoricalLocation` entity.
+    """
 
     try:
         sensorthings_service.update_historical_location(
-            entity_id=entity_id,
-            entity=entity,
-            context=request
+            entity_id=entity_id, entity=entity, context=request
         )
     except Exception as e:
         raise http_error(e)
@@ -134,22 +146,22 @@ def update_historical_location(
 
 @router.delete(
     f"{iot.HISTORICAL_LOCATIONS}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
-    auth=app_settings.AUTH_HANDLERS.get("delete_historical_location", app_settings.DEFAULT_AUTH_HANDLER),
-    response={
-        204: None,
-        **delete_entity_error_responses
-    },
+    auth=app_settings.AUTH_HANDLERS.get(
+        "delete_historical_location", app_settings.DEFAULT_AUTH_HANDLER
+    ),
+    response={204: None, **delete_entity_error_responses},
 )
 def delete_historical_location(
     request: HttpRequest,
     entity_id: Path[app_settings.ID_TYPE],
-):
-    """"""
+) -> tuple[int, None]:
+    """
+    Delete a `HistoricalLocation` entity by ID.
+    """
 
     try:
         sensorthings_service.delete_historical_location(
-            entity_id=entity_id,
-            context=request
+            entity_id=entity_id, context=request
         )
     except Exception as e:
         raise http_error(e)

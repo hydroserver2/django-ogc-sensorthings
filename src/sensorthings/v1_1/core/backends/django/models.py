@@ -35,21 +35,16 @@ class HistoricalLocation(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
     time = models.DateTimeField()
     thing = models.ForeignKey(
-        Thing,
-        on_delete=models.CASCADE,
-        related_name="historical_locations"
+        Thing, on_delete=models.CASCADE, related_name="historical_locations"
     )
     location = models.ForeignKey(
-        Location,
-        on_delete=models.CASCADE,
-        related_name="historical_locations"
+        Location, on_delete=models.CASCADE, related_name="historical_locations"
     )
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["thing", "time"],
-                name="unique_historical_location_per_time"
+                fields=["thing", "time"], name="unique_historical_location_per_time"
             )
         ]
 
@@ -82,7 +77,9 @@ class ObservedProperty(models.Model):
 
 
 class Datastream(models.Model):
-    OM_MEASUREMENT = f"http://www.opengis.net/def/observationType/OGC-OM/2.0/OM_Measurement"
+    OM_MEASUREMENT = (
+        f"http://www.opengis.net/def/observationType/OGC-OM/2.0/OM_Measurement"
+    )
 
     OBSERVATION_TYPE_CHOICES = [
         (OM_MEASUREMENT, OM_MEASUREMENT),
@@ -99,9 +96,15 @@ class Datastream(models.Model):
     phenomenon_time_end = models.DateTimeField(null=True, blank=True)
     result_time_begin = models.DateTimeField(null=True, blank=True)
     result_time_end = models.DateTimeField(null=True, blank=True)
-    thing = models.ForeignKey(Thing, on_delete=models.CASCADE, related_name="datastreams")
-    sensor = models.ForeignKey(Sensor, on_delete=models.CASCADE, related_name="datastreams")
-    observed_property = models.ForeignKey(ObservedProperty, on_delete=models.CASCADE, related_name="datastreams")
+    thing = models.ForeignKey(
+        Thing, on_delete=models.CASCADE, related_name="datastreams"
+    )
+    sensor = models.ForeignKey(
+        Sensor, on_delete=models.CASCADE, related_name="datastreams"
+    )
+    observed_property = models.ForeignKey(
+        ObservedProperty, on_delete=models.CASCADE, related_name="datastreams"
+    )
 
 
 class FeatureOfInterest(models.Model):
@@ -129,5 +132,9 @@ class Observation(models.Model):
     valid_time_begin = models.DateTimeField(null=True, blank=True)
     valid_time_end = models.DateTimeField(null=True, blank=True)
     parameters = models.JSONField(null=True, blank=True)
-    datastream = models.ForeignKey(Datastream, on_delete=models.CASCADE, related_name="observations")
-    feature_of_interest = models.ForeignKey(FeatureOfInterest, on_delete=models.CASCADE, related_name="observations")
+    datastream = models.ForeignKey(
+        Datastream, on_delete=models.CASCADE, related_name="observations"
+    )
+    feature_of_interest = models.ForeignKey(
+        FeatureOfInterest, on_delete=models.CASCADE, related_name="observations"
+    )

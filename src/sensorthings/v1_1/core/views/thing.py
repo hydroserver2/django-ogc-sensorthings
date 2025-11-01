@@ -2,11 +2,22 @@ from ninja import Router, Path, Query
 from django.http import HttpRequest, HttpResponse
 from sensorthings.v1_1.core import iot
 from sensorthings.v1_1.core.service import sensorthings_service
-from sensorthings.v1_1.core.schemas import (CollectionQuery, EntityQuery, ThingCollectionResponse, ThingResponse,
-                                            ThingPostBody, ThingPatchBody)
-from sensorthings.v1_1.http import (get_collection_error_responses, get_entity_error_responses,
-                                    create_entity_error_responses, update_entity_error_responses,
-                                    delete_entity_error_responses, http_error)
+from sensorthings.v1_1.core.schemas import (
+    CollectionQuery,
+    EntityQuery,
+    ThingCollectionResponse,
+    ThingResponse,
+    ThingPostBody,
+    ThingPatchBody,
+)
+from sensorthings.v1_1.http import (
+    get_collection_error_responses,
+    get_entity_error_responses,
+    create_entity_error_responses,
+    update_entity_error_responses,
+    delete_entity_error_responses,
+    http_error,
+)
 from sensorthings.v1_1.conf import app_settings
 
 router = Router(tags=["Things"])
@@ -14,19 +25,20 @@ router = Router(tags=["Things"])
 
 @router.get(
     iot.THINGS,
-    auth=app_settings.AUTH_HANDLERS.get("get_thing_collection", app_settings.DEFAULT_AUTH_HANDLER),
-    response={
-        200: ThingCollectionResponse,
-        **get_collection_error_responses
-    },
+    auth=app_settings.AUTH_HANDLERS.get(
+        "get_thing_collection", app_settings.DEFAULT_AUTH_HANDLER
+    ),
+    response={200: ThingCollectionResponse, **get_collection_error_responses},
     by_alias=True,
     exclude_unset=True,
 )
 def get_thing_collection(
     request: HttpRequest,
     query: Query[CollectionQuery],
-):
-    """"""
+) -> tuple[int, ThingCollectionResponse]:
+    """
+    Retrieve a collection of `Thing` entities.
+    """
 
     try:
         resource = sensorthings_service.get_thing_collection(
@@ -37,36 +49,32 @@ def get_thing_collection(
             top=query.top,
             select=query.select,
             expand=query.expand,
-            context=request
+            context=request,
         )
     except Exception as e:
         raise e
-
-    print(resource)
 
     return 200, resource
 
 
 @router.post(
     iot.THINGS,
-    auth=app_settings.AUTH_HANDLERS.get("create_thing", app_settings.DEFAULT_AUTH_HANDLER),
-    response={
-        201: None,
-        **create_entity_error_responses
-    },
+    auth=app_settings.AUTH_HANDLERS.get(
+        "create_thing", app_settings.DEFAULT_AUTH_HANDLER
+    ),
+    response={201: None, **create_entity_error_responses},
 )
 def create_thing(
     request: HttpRequest,
     response: HttpResponse,
-    entity: ThingPostBody
-):
-    """"""
+    entity: ThingPostBody,
+) -> tuple[int, None]:
+    """
+    Create a new `Thing` entity.
+    """
 
     try:
-        resource = sensorthings_service.create_thing(
-            entity=entity,
-            context=request
-        )
+        resource = sensorthings_service.create_thing(entity=entity, context=request)
         response.headers["Location"] = resource.iot_self_link
     except Exception as e:
         raise http_error(e)
@@ -77,26 +85,25 @@ def create_thing(
 @router.get(
     f"{iot.THINGS}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
     auth=app_settings.AUTH_HANDLERS.get("get_thing", app_settings.DEFAULT_AUTH_HANDLER),
-    response={
-        200: ThingResponse,
-        **get_entity_error_responses
-    },
+    response={200: ThingResponse, **get_entity_error_responses},
     by_alias=True,
     exclude_unset=True,
 )
 def get_thing(
     request: HttpRequest,
     query: Query[EntityQuery],
-    entity_id: Path[app_settings.ID_TYPE]
-):
-    """"""
+    entity_id: Path[app_settings.ID_TYPE],
+) -> tuple[int, ThingResponse]:
+    """
+    Retrieve a single `Thing` entity by ID.
+    """
 
     try:
         resource = sensorthings_service.get_thing(
             entity_id=entity_id,
             select=query.select,
             expand=query.expand,
-            context=request
+            context=request,
         )
     except Exception as e:
         raise http_error(e)
@@ -106,25 +113,24 @@ def get_thing(
 
 @router.patch(
     f"{iot.THINGS}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
-    auth=app_settings.AUTH_HANDLERS.get("update_thing", app_settings.DEFAULT_AUTH_HANDLER),
-    response={
-        204: None,
-        **update_entity_error_responses
-    },
+    auth=app_settings.AUTH_HANDLERS.get(
+        "update_thing", app_settings.DEFAULT_AUTH_HANDLER
+    ),
+    response={204: None, **update_entity_error_responses},
     exclude_unset=True,
 )
 def update_thing(
     request: HttpRequest,
     entity_id: Path[app_settings.ID_TYPE],
-    entity: ThingPatchBody
-):
-    """"""
+    entity: ThingPatchBody,
+) -> tuple[int, None]:
+    """
+    Update an existing `Thing` entity.
+    """
 
     try:
         sensorthings_service.update_thing(
-            entity_id=entity_id,
-            entity=entity,
-            context=request
+            entity_id=entity_id, entity=entity, context=request
         )
     except Exception as e:
         raise http_error(e)
@@ -134,23 +140,21 @@ def update_thing(
 
 @router.delete(
     f"{iot.THINGS}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
-    auth=app_settings.AUTH_HANDLERS.get("delete_thing", app_settings.DEFAULT_AUTH_HANDLER),
-    response={
-        204: None,
-        **delete_entity_error_responses
-    },
+    auth=app_settings.AUTH_HANDLERS.get(
+        "delete_thing", app_settings.DEFAULT_AUTH_HANDLER
+    ),
+    response={204: None, **delete_entity_error_responses},
 )
 def delete_thing(
     request: HttpRequest,
     entity_id: Path[app_settings.ID_TYPE],
-):
-    """"""
+) -> tuple[int, None]:
+    """
+    Delete a `Thing` entity by ID.
+    """
 
     try:
-        sensorthings_service.delete_thing(
-            entity_id=entity_id,
-            context=request
-        )
+        sensorthings_service.delete_thing(entity_id=entity_id, context=request)
     except Exception as e:
         raise http_error(e)
 

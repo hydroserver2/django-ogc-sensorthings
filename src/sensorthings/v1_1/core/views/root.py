@@ -10,11 +10,13 @@ router = Router()
     response=ServiceRootSchema,
     exclude_unset=True,
 )
-def get_root(request):
+def get_root(request) -> dict:
+    """
+    Return the SensorThings API service root document.
 
-    return {
-        "server_settings": {
-            "conformance": []
-        },
-        "value": []
-    }
+    This endpoint provides the base structure of the service, including
+    conformance information and an empty collection of entities. It is not
+    included in the API schema.
+    """
+
+    return {"server_settings": {"conformance": []}, "value": []}
