@@ -16,4 +16,3 @@ class SensorDTO(BaseEntityDTO):
     properties: Optional[Dict] = None
 
     _entity = iot.SENSORS
-    _related_entities = [iot.DATASTREAMS]

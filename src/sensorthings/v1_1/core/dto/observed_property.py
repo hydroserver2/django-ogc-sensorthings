@@ -12,4 +12,3 @@ class ObservedPropertyDTO(BaseEntityDTO):
     properties: Optional[Dict] = None
 
     _entity = iot.OBSERVED_PROPERTIES
-    _related_entities = [iot.DATASTREAMS]

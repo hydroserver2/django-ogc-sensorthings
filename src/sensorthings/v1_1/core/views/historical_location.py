@@ -45,7 +45,7 @@ async def get_historical_location_collection(
     """
 
     try:
-        resource = await sensorthings_service.get_historical_location_collection(
+        resource = await sensorthings_service.historical_locations.get_collection(
             filter=query.filter,
             count=query.count,
             orderby=query.orderby,
@@ -76,7 +76,7 @@ async def create_historical_location(
     """
 
     try:
-        resource = await sensorthings_service.create_historical_location(
+        resource = await sensorthings_service.historical_locations.create_entity(
             entity=entity, context=request
         )
         response.headers["Location"] = resource.iot_self_link
@@ -106,7 +106,7 @@ async def get_historical_location(
     """
 
     try:
-        resource = await sensorthings_service.get_historical_location(
+        resource = await sensorthings_service.historical_locations.get_entity(
             entity_id=entity_id,
             select=query.select,
             expand=query.expand,
@@ -135,7 +135,7 @@ async def update_historical_location(
     """
 
     try:
-        await sensorthings_service.update_historical_location(
+        await sensorthings_service.historical_locations.update_entity(
             entity_id=entity_id, entity=entity, context=request
         )
     except Exception as e:
@@ -160,7 +160,7 @@ async def delete_historical_location(
     """
 
     try:
-        await sensorthings_service.delete_historical_location(
+        await sensorthings_service.historical_locations.delete_entity(
             entity_id=entity_id, context=request
         )
     except Exception as e:

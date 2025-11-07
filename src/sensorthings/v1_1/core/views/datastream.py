@@ -42,7 +42,7 @@ async def get_datastream_collection(
     """
 
     try:
-        resource = await sensorthings_service.get_datastream_collection(
+        resource = await sensorthings_service.datastreams.get_collection(
             filter=query.filter,
             count=query.count,
             orderby=query.orderby,
@@ -73,7 +73,7 @@ async def create_datastream(
     """
 
     try:
-        resource = await sensorthings_service.create_datastream(
+        resource = await sensorthings_service.datastreams.create_entity(
             entity=entity, context=request
         )
         response.headers["Location"] = resource.iot_self_link
@@ -103,7 +103,7 @@ async def get_datastream(
     """
 
     try:
-        resource = await sensorthings_service.get_datastream(
+        resource = await sensorthings_service.datastreams.get_entity(
             entity_id=entity_id,
             select=query.select,
             expand=query.expand,
@@ -132,7 +132,7 @@ async def update_datastream(
     """
 
     try:
-        await sensorthings_service.update_datastream(
+        await sensorthings_service.datastreams.update_entity(
             entity_id=entity_id, entity=entity, context=request
         )
     except Exception as e:
@@ -157,7 +157,7 @@ async def delete_datastream(
     """
 
     try:
-        await sensorthings_service.delete_datastream(entity_id=entity_id, context=request)
+        await sensorthings_service.datastreams.delete_entity(entity_id=entity_id, context=request)
     except Exception as e:
         raise http_error(e)
 

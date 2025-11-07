@@ -44,7 +44,7 @@ async def get_observed_property_collection(
     Retrieve a collection of `ObservedProperty` entities.
     """
     try:
-        resource = await sensorthings_service.get_observed_property_collection(
+        resource = await sensorthings_service.observed_properties.get_collection(
             filter=query.filter,
             count=query.count,
             orderby=query.orderby,
@@ -77,7 +77,7 @@ async def create_observed_property(
     """
 
     try:
-        resource = await sensorthings_service.create_observed_property(
+        resource = await sensorthings_service.observed_properties.create_entity(
             entity=entity, context=request
         )
         response.headers["Location"] = resource.iot_self_link
@@ -107,7 +107,7 @@ async def get_observed_property(
     """
 
     try:
-        resource = await sensorthings_service.get_observed_property(
+        resource = await sensorthings_service.observed_properties.get_entity(
             entity_id=entity_id,
             select=query.select,
             expand=query.expand,
@@ -136,7 +136,7 @@ async def update_observed_property(
     """
 
     try:
-        await sensorthings_service.update_observed_property(
+        await sensorthings_service.observed_properties.update_entity(
             entity_id=entity_id, entity=entity, context=request
         )
     except Exception as e:
@@ -161,7 +161,7 @@ async def delete_observed_property(
     """
 
     try:
-        await sensorthings_service.delete_observed_property(
+        await sensorthings_service.observed_properties.delete_entity(
             entity_id=entity_id, context=request
         )
     except Exception as e:

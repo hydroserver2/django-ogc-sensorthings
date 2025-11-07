@@ -49,7 +49,7 @@ class DatastreamResponse(
         iot.OBSERVATIONS,
     ]
 
-    thing_link: str = Field(Absent, alias=iot.THINGS + iot.NAVIGATION_LINK)
+    thing_link: str = Field(Absent, alias=iot.THING + iot.NAVIGATION_LINK)
     thing: Union["ThingResponse", IdSchema] = Field(Absent, alias=iot.THING)
 
     sensor_link: str = Field(Absent, alias=iot.SENSOR + iot.NAVIGATION_LINK)

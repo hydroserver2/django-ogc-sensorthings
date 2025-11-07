@@ -45,7 +45,7 @@ async def get_feature_of_interest_collection(
     """
 
     try:
-        resource = await sensorthings_service.get_feature_of_interest_collection(
+        resource = await sensorthings_service.features_of_interest.get_collection(
             filter=query.filter,
             count=query.count,
             orderby=query.orderby,
@@ -76,7 +76,7 @@ async def create_feature_of_interest(
     """
 
     try:
-        resource = await sensorthings_service.create_feature_of_interest(
+        resource = await sensorthings_service.features_of_interest.create_entity(
             entity=entity, context=request
         )
         response.headers["Location"] = resource.iot_self_link
@@ -106,7 +106,7 @@ async def get_feature_of_interest(
     """
 
     try:
-        resource = await sensorthings_service.get_feature_of_interest(
+        resource = await sensorthings_service.features_of_interest.get_entity(
             entity_id=entity_id,
             select=query.select,
             expand=query.expand,
@@ -135,7 +135,7 @@ async def update_feature_of_interest(
     """
 
     try:
-        await sensorthings_service.update_feature_of_interest(
+        await sensorthings_service.features_of_interest.update_entity(
             entity_id=entity_id, entity=entity, context=request
         )
     except Exception as e:
@@ -160,7 +160,7 @@ async def delete_feature_of_interest(
     """
 
     try:
-        await sensorthings_service.delete_feature_of_interest(
+        await sensorthings_service.features_of_interest.delete_entity(
             entity_id=entity_id, context=request
         )
     except Exception as e:

@@ -17,4 +17,3 @@ class LocationDTO(BaseEntityDTO):
     iot_historical_location_ids: Optional[List[app_settings.ID_TYPE]] = None
 
     _entity = iot.LOCATIONS
-    _related_entities = [iot.THINGS, iot.HISTORICAL_LOCATIONS]

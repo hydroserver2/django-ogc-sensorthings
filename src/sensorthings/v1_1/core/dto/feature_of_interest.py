@@ -16,4 +16,3 @@ class FeatureOfInterestDTO(BaseEntityDTO):
     properties: Optional[app_settings.PROPERTIES_SCHEMAS.get("Location", Dict)] = None
 
     _entity = iot.FEATURES_OF_INTEREST
-    _related_entities = [iot.OBSERVATIONS]

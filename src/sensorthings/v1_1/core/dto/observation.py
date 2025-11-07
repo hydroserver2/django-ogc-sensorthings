@@ -19,4 +19,3 @@ class ObservationDTO(BaseEntityDTO):
     iot_feature_of_interest_id: Optional[app_settings.ID_TYPE] = None
 
     _entity = iot.OBSERVATIONS
-    _related_entities = [iot.DATASTREAM, iot.FEATURE_OF_INTEREST]

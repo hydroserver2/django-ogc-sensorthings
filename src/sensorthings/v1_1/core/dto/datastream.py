@@ -22,4 +22,3 @@ class DatastreamDTO(BaseEntityDTO):
     iot_sensor_id: Optional[app_settings.ID_TYPE] = None
 
     _entity = iot.DATASTREAMS
-    _related_entities = [iot.THING, iot.OBSERVED_PROPERTY, iot.SENSOR, iot.OBSERVATIONS]

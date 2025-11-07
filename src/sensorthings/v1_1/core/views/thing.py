@@ -35,21 +35,21 @@ router = Router(tags=["Things"])
 async def get_thing_collection(
     request: HttpRequest,
     query: Query[CollectionQuery],
-) -> tuple[int, ThingCollectionResponse]:
+) -> tuple[int, dict]:
     """
     Retrieve a collection of `Thing` entities.
     """
 
     try:
-        resource = await sensorthings_service.get_thing_collection(
-            filter=query.filter,
-            count=query.count,
-            orderby=query.orderby,
-            skip=query.skip,
-            top=query.top,
-            select=query.select,
-            expand=query.expand,
-            context=request,
+        resource = await sensorthings_service.things.get_collection(
+            select_query=query.select,
+            expand_query=query.expand,
+            filter_query=query.filter,
+            count_query=query.count,
+            orderby_query=query.orderby,
+            skip_query=query.skip,
+            top_query=query.top,
+            context=request
         )
     except Exception as e:
         raise e
@@ -74,7 +74,7 @@ async def create_thing(
     """
 
     try:
-        resource = await sensorthings_service.create_thing(entity=entity, context=request)
+        resource = await sensorthings_service.things.create_entity(entity=entity, context=request)
         response.headers["Location"] = resource.iot_self_link
     except Exception as e:
         raise http_error(e)
@@ -99,7 +99,7 @@ async def get_thing(
     """
 
     try:
-        resource = await sensorthings_service.get_thing(
+        resource = await sensorthings_service.things.get_entity(
             entity_id=entity_id,
             select=query.select,
             expand=query.expand,
@@ -129,7 +129,7 @@ async def update_thing(
     """
 
     try:
-        await sensorthings_service.update_thing(
+        await sensorthings_service.things.update_entity(
             entity_id=entity_id, entity=entity, context=request
         )
     except Exception as e:
@@ -154,7 +154,7 @@ async def delete_thing(
     """
 
     try:
-        await sensorthings_service.delete_thing(entity_id=entity_id, context=request)
+        await sensorthings_service.things.delete_entity(entity_id=entity_id, context=request)
     except Exception as e:
         raise http_error(e)
 

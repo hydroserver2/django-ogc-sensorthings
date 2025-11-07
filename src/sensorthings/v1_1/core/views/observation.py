@@ -42,7 +42,7 @@ async def get_observation_collection(
     """
 
     try:
-        resource = await sensorthings_service.get_observation_collection(
+        resource = await sensorthings_service.observations.get_collection(
             filter=query.filter,
             count=query.count,
             orderby=query.orderby,

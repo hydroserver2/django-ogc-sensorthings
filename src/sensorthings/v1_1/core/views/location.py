@@ -42,7 +42,7 @@ async def get_location_collection(
     """
 
     try:
-        resource = await sensorthings_service.get_location_collection(
+        resource = await sensorthings_service.locations.get_collection(
             filter=query.filter,
             count=query.count,
             orderby=query.orderby,
@@ -73,7 +73,7 @@ async def create_location(
     """
 
     try:
-        resource = await sensorthings_service.create_location(entity=entity, context=request)
+        resource = await sensorthings_service.locations.create_entity(entity=entity, context=request)
         response.headers["Location"] = resource.iot_self_link
     except Exception as e:
         raise http_error(e)
@@ -101,7 +101,7 @@ async def get_location(
     """
 
     try:
-        resource = await sensorthings_service.get_location(
+        resource = await sensorthings_service.locations.get_entity(
             entity_id=entity_id,
             select=query.select,
             expand=query.expand,
@@ -130,7 +130,7 @@ async def update_location(
     """
 
     try:
-        await sensorthings_service.update_location(
+        await sensorthings_service.locations.update_entity(
             entity_id=entity_id, entity=entity, context=request
         )
     except Exception as e:
@@ -155,7 +155,7 @@ async def delete_location(
     """
 
     try:
-        await sensorthings_service.delete_location(entity_id=entity_id, context=request)
+        await sensorthings_service.locations.delete_entity(entity_id=entity_id, context=request)
     except Exception as e:
         raise http_error(e)
 
