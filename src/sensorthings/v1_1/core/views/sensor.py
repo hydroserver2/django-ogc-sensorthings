@@ -75,7 +75,9 @@ async def create_sensor(
     """
 
     try:
-        resource = await sensorthings_service.sensors.create_entity(entity=entity, context=request)
+        resource = await sensorthings_service.sensors.create_entity(
+            entity=entity, context=request
+        )
         response.headers["Location"] = resource.iot_self_link
     except Exception as e:
         raise http_error(e)
@@ -157,7 +159,9 @@ async def delete_sensor(
     """
 
     try:
-        await sensorthings_service.sensors.delete_entity(entity_id=entity_id, context=request)
+        await sensorthings_service.sensors.delete_entity(
+            entity_id=entity_id, context=request
+        )
     except Exception as e:
         raise http_error(e)
 

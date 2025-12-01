@@ -13,8 +13,8 @@ class EntityQuery(Schema):
 class CollectionQuery(EntityQuery):
     """Query schema for collections."""
 
-    filter: str = Field(Absent, alias="$filter")
+    filters: str = Field(Absent, alias="$filter")
     count: bool = Field(False, alias="$count")
-    orderby: str = Field(Absent, alias="$orderby")
+    order_by: str = Field(Absent, alias="$orderby")
     skip: int = Field(0, ge=0, alias="$skip")
     top: int = Field(100, ge=0, le=app_settings.MAX_TOP, alias="$top")

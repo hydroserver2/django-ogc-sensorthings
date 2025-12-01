@@ -1,6 +1,9 @@
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Callable, Type, Literal, Union
+from typing import Any, Callable, Literal, TYPE_CHECKING
 from django.conf import settings as django_settings
+
+if TYPE_CHECKING:
+    from sensorthings.v1_1.core.adapters import BackendAdapter
 
 
 SETTINGS_PREFIX = "SENSORTHINGS_V1_1_"
@@ -24,22 +27,25 @@ class AppSettings:
     ID_DELIMITER: str = ""
     """The delimiter character for entity IDs in resource paths."""
 
-    ID_EXAMPLE: Union[str, None] = None
+    ID_EXAMPLE: str | None = None
     """An example value for entity IDs."""
 
     MAX_TOP: int = 100
     """The maximum length of a collection response returned by the service."""
 
-    AUTH_HANDLERS: Dict[str, Callable] = field(default_factory=dict)
+    AUTH_HANDLERS: dict[str, Callable] = field(default_factory=dict)
     """Custom authentication handlers for HTTP endpoints."""
 
-    DEFAULT_AUTH_HANDLER: Union[List[Callable], None] = None
+    DEFAULT_AUTH_HANDLER: list[Callable] | None = None
     """Default authentication handler for HTTP endpoints."""
 
-    PROPERTIES_SCHEMAS: Dict[str, Any] = field(default_factory=dict)
+    BACKEND_ADAPTER: type("BackendAdapter") = None
+    """The backend adapter this service is connected to."""
+
+    PROPERTIES_SCHEMAS: dict[str, Any] = field(default_factory=dict)
     """Custom schemas for entity property fields."""
 
-    LOCATION_ENCODING_TYPE_SCHEMA: Type = Dict
+    LOCATION_ENCODING_TYPE_SCHEMA: type = dict
     """Type declaration for location encoding."""
 
     LOCATION_ENCODING_TYPE_VALUE_LITERAL: Literal = field(
@@ -47,7 +53,7 @@ class AppSettings:
     )
     """Allowed values for location encoding type."""
 
-    OBSERVATION_TYPE_SCHEMA: Type = float
+    OBSERVATION_TYPE_SCHEMA: type = float
     """Type declaration for observation result."""
 
     OBSERVATION_TYPE_VALUE_LITERAL: Literal = field(
@@ -61,7 +67,7 @@ class AppSettings:
     )
     """Allowed values for observation type."""
 
-    SENSOR_METADATA_ENCODING_TYPE_SCHEMA: Type = str
+    SENSOR_METADATA_ENCODING_TYPE_SCHEMA: type = str
     """Type declaration for sensor metadata encoding."""
 
     SENSOR_METADATA_ENCODING_TYPE_VALUE_LITERAL: Literal = field(
@@ -73,7 +79,7 @@ class AppSettings:
     )
     """Allowed values for sensor metadata encoding type."""
 
-    FEATURE_OF_INTEREST_ENCODING_TYPE_SCHEMA: Type = Dict
+    FEATURE_OF_INTEREST_ENCODING_TYPE_SCHEMA: type = dict
     """Type declaration for feature of interest encoding."""
 
     FEATURE_OF_INTEREST_ENCODING_TYPE_VALUE_LITERAL: Literal = field(

@@ -7,3 +7,4 @@ from .sensor import router as sensor_router
 from .observed_property import router as observed_property_router
 from .observation import router as observation_router
 from .feature_of_interest import router as feature_of_interest_router
+from .resolver import router as resolver_router

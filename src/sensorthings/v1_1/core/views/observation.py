@@ -159,7 +159,9 @@ async def delete_observation(
     """
 
     try:
-        await sensorthings_service.delete_observation(entity_id=entity_id, context=request)
+        await sensorthings_service.delete_observation(
+            entity_id=entity_id, context=request
+        )
     except Exception as e:
         raise http_error(e)
 

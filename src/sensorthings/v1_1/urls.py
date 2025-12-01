@@ -11,6 +11,7 @@ from sensorthings.v1_1.core.views import (
     observed_property_router,
     observation_router,
     feature_of_interest_router,
+    resolver_router
 )
 
 
@@ -31,5 +32,7 @@ api.add_router("", sensor_router)
 api.add_router("", observed_property_router)
 api.add_router("", observation_router)
 api.add_router("", feature_of_interest_router)
+
+api.add_router("", resolver_router)
 
 urlpatterns = [path("v1.1/", api.urls)]

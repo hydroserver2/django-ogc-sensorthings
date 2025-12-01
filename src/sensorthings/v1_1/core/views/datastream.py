@@ -157,7 +157,9 @@ async def delete_datastream(
     """
 
     try:
-        await sensorthings_service.datastreams.delete_entity(entity_id=entity_id, context=request)
+        await sensorthings_service.datastreams.delete_entity(
+            entity_id=entity_id, context=request
+        )
     except Exception as e:
         raise http_error(e)
 

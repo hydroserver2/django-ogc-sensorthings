@@ -1,3 +1,4 @@
+from urllib.parse import urlencode
 from sensorthings.v1_1.conf import app_settings
 
 
@@ -43,6 +44,9 @@ class IOT:
     FEATURES_OF_INTEREST = "FeaturesOfInterest"
     FEATURE_OF_INTEREST = "FeatureOfInterest"
 
+    SENSING_ENTITIES = {THINGS, LOCATIONS, HISTORICAL_LOCATIONS, DATASTREAMS, OBSERVED_PROPERTIES, SENSORS,
+                        OBSERVATIONS, FEATURES_OF_INTEREST}
+
     @staticmethod
     def _iot_id_part(iot_id: app_settings.ID_TYPE) -> str:
         """Format an entity ID using the configured ID delimiter."""
@@ -68,3 +72,15 @@ class IOT:
         """Build a navigation link from one entity instance to a related entity set."""
 
         return f"{self.build_self_link(entity, iot_id)}/{related_entity}"
+
+    def build_next_link(
+        self,
+        relative_path: str,
+        query_parameters: dict,
+    ) -> str:
+        """Build the next link for a collection of entities."""
+
+        query_parameters["$top"] = int(query_parameters.get("$top", 100))
+        query_parameters["$skip"] = int(query_parameters.get("$skip", 0)) + query_parameters["$top"]
+
+        return f"{app_settings.SERVICE_URL}/{self.VERSION}/{relative_path}?{urlencode(query_parameters, safe='$')}"

@@ -18,7 +18,7 @@ class OrderByField:
 class QueryDTO:
     select: list[str] | None = None
     expand: dict[str, "QueryDTO"] = field(default_factory=dict)
-    filter: _Node | None = None
+    filters: _Node | None = None
     count: bool = False
     order_by: list[OrderByField] = field(default_factory=list)
     skip: int = 0
