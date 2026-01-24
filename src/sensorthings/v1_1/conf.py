@@ -1,9 +1,7 @@
 from dataclasses import dataclass, field
-from typing import Any, Callable, Literal, TYPE_CHECKING
+from typing import Any, Callable, Literal
+from uuid import UUID
 from django.conf import settings as django_settings
-
-if TYPE_CHECKING:
-    from sensorthings.v1_1.core.adapters import BackendAdapter
 
 
 SETTINGS_PREFIX = "SENSORTHINGS_V1_1_"
@@ -27,7 +25,7 @@ class AppSettings:
     ID_DELIMITER: str = ""
     """The delimiter character for entity IDs in resource paths."""
 
-    ID_EXAMPLE: str | None = None
+    ID_EXAMPLE: str = None
     """An example value for entity IDs."""
 
     MAX_TOP: int = 100
@@ -39,7 +37,7 @@ class AppSettings:
     DEFAULT_AUTH_HANDLER: list[Callable] | None = None
     """Default authentication handler for HTTP endpoints."""
 
-    BACKEND_ADAPTER: type("BackendAdapter") = None
+    BACKEND_ADAPTER: None = None  # type("BackendAdapter") = None  # TODO
     """The backend adapter this service is connected to."""
 
     PROPERTIES_SCHEMAS: dict[str, Any] = field(default_factory=dict)
@@ -86,6 +84,20 @@ class AppSettings:
         default_factory=lambda: Literal["application/geo+json"]
     )
     """Allowed values for feature of interest encoding type."""
+
+    def __post_init__(self):
+        id_examples: dict[type, str] = {
+            int: "1",
+            str: "string",
+            UUID: "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+        }
+
+        if self.ID_EXAMPLE is None:
+            object.__setattr__(
+                self,
+                "ID_EXAMPLE",
+                id_examples.get(self.ID_TYPE, 1),
+            )
 
     def __getattribute__(self, name: str) -> Any:
         """Retrieve a setting, allowing Django settings to override defaults."""

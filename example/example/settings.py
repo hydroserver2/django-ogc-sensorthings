@@ -39,6 +39,8 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "sensorthings.v1_1",
+    # "sensorthings.v1_1.extensions.dataarray",
+    "sensorthings.v1_1.extensions.multidatastream",
 ]
 
 MIDDLEWARE = [
