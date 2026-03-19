@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 from pathlib import Path
+from uuid import UUID
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -38,9 +39,9 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "sensorthings.v1_1",
-    # "sensorthings.v1_1.extensions.dataarray",
-    "sensorthings.v1_1.extensions.multidatastream",
+    "sensorthings.versions.v1_1",
+    "sensorthings.versions.v1_1.backends.django",
+    "sensorthings.versions.v1_1.extensions.dataarray"
 ]
 
 MIDDLEWARE = [
@@ -128,3 +129,6 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
 SENSORTHINGS_V1_1_SERVICE_URL = "http://127.0.0.1:8000/sensorthings"
+SENSORTHINGS_V1_1_BACKEND_ADAPTER = "sensorthings.versions.v1_1.backends.django.adapter.DjangoBackendAdapter"
+SENSORTHINGS_V1_1_ID_TYPE = UUID
+SENSORTHINGS_V1_1_ID_DELIMITER = "'"

@@ -1,0 +1,13 @@
+from typing import Dict
+from dataclasses import dataclass
+from sensorthings.types import Absent
+from sensorthings.versions.v1_1 import app_settings
+from .base import BaseEntityDTO
+
+
+@dataclass
+class ObservedPropertyDTO(BaseEntityDTO):
+    name: str = Absent
+    definition: str = Absent
+    description: str = Absent
+    properties: app_settings.PROPERTIES_SCHEMAS.get("ObservedProperty", Dict) = Absent

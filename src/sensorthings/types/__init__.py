@@ -1,4 +1,5 @@
 from .absent import Absent
+from .entity import EntityType
 from .iso_string import (
     ISOTimeString,
     ISOIntervalString,
