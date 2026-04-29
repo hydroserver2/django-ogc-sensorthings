@@ -49,6 +49,10 @@ class PartialMetaclass(type(Schema)):
     Marks all fields as `Absent` by default, necessary for PATCH operations where only provided fields should
     be included, or responses where a subset of fields is selected by the client. Copies all inherited model fields and
     annotations to avoid mutating base classes.
+
+    Note: modifying `model_fields` after class creation does not update the compiled Pydantic core
+    schema on its own. Callers that need validation to reflect the Absent defaults (e.g. PATCH bodies)
+    must call `model_rebuild(force=True)` after construction.
     """
 
     def __new__(

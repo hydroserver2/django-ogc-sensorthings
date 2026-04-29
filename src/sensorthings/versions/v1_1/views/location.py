@@ -69,10 +69,12 @@ async def create_location_entity(
     """
 
     try:
-        entity = await sensorthings_service.locations.create_entity(
-            payload=payload, context=request
+        entity = await sensorthings_service.create_entity(
+            entity_type=sta.LOCATION_ENTITY,
+            payload=payload.dict(exclude_unset=True),
+            context=request
         )
-        response.headers["Location"] = entity.iot_self_link
+        response.headers["Location"] = entity["iot_self_link"]
     except Exception as e:
         raise http_error(e)
 

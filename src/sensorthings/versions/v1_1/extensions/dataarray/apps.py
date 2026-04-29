@@ -12,7 +12,7 @@ class DataArrayConfig(AppConfig):
         from sensorthings.versions.v1_1.extensions.dataarray.service import DataArrayServiceMixin
         from sensorthings.versions.v1_1.extensions.dataarray.views.observation import (
             get_observation_collection_operation,
-            create_observations_operation
+            create_observations_operation,
         )
 
         data_array_service_class = type(

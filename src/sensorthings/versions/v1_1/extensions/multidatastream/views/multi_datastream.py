@@ -82,7 +82,7 @@ async def create_multi_datastream_entity(
             payload=payload,
             context=request
         )
-        response.headers["Location"] = entity.iot_self_link
+        response.headers["Location"] = entity["iot_self_link"]
     except Exception as e:
         raise http_error(e)
 

@@ -9,6 +9,10 @@ class SensorThingsV11Config(AppConfig):
     def ready(self) -> None:
         from sensorthings.types import EntityType
         from sensorthings.versions.v1_1 import STA
+        from sensorthings.versions.v1_1.dto import (
+            ThingDTO, LocationDTO, HistoricalLocationDTO, SensorDTO,
+            ObservedPropertyDTO, DatastreamDTO, ObservationDTO, FeatureOfInterestDTO,
+        )
 
         STA.register_entity(
             EntityType(
@@ -17,7 +21,9 @@ class SensorThingsV11Config(AppConfig):
                 primitive_properties=["id", "name", "description"],
                 complex_properties=["properties"],
                 related_entity_type_names=[],
-                related_entity_type_set_names=["Locations", "HistoricalLocations", "Datastreams"]
+                related_entity_type_set_names=["Locations", "HistoricalLocations", "Datastreams"],
+                optional_properties=["properties"],
+                dto_class=ThingDTO,
             )
         )
 
@@ -28,7 +34,9 @@ class SensorThingsV11Config(AppConfig):
                 primitive_properties=["id", "name", "description", "encodingType"],
                 complex_properties=["location", "properties"],
                 related_entity_type_names=[],
-                related_entity_type_set_names=["Things", "HistoricalLocations"]
+                related_entity_type_set_names=["Things", "HistoricalLocations"],
+                optional_properties=["properties"],
+                dto_class=LocationDTO,
             )
         )
 
@@ -39,7 +47,8 @@ class SensorThingsV11Config(AppConfig):
                 primitive_properties=["id", "time"],
                 complex_properties=[],
                 related_entity_type_names=["Thing"],
-                related_entity_type_set_names=["Locations"]
+                related_entity_type_set_names=["Locations"],
+                dto_class=HistoricalLocationDTO,
             )
         )
 
@@ -50,7 +59,9 @@ class SensorThingsV11Config(AppConfig):
                 primitive_properties=["id", "name", "description", "observationType", "phenomenonTime", "resultTime"],
                 complex_properties=["properties", "unitOfMeasurement", "observedArea"],
                 related_entity_type_names=["Thing", "Sensor", "ObservedProperty"],
-                related_entity_type_set_names=["Observations"]
+                related_entity_type_set_names=["Observations"],
+                optional_properties=["properties", "observedArea", "phenomenonTime", "resultTime"],
+                dto_class=DatastreamDTO,
             )
         )
 
@@ -61,7 +72,9 @@ class SensorThingsV11Config(AppConfig):
                 primitive_properties=["id", "name", "definition", "description"],
                 complex_properties=["properties"],
                 related_entity_type_names=[],
-                related_entity_type_set_names=["Datastreams"]
+                related_entity_type_set_names=["Datastreams"],
+                optional_properties=["properties"],
+                dto_class=ObservedPropertyDTO,
             )
         )
 
@@ -72,7 +85,9 @@ class SensorThingsV11Config(AppConfig):
                 primitive_properties=["id", "name", "description", "encodingType"],
                 complex_properties=["metadata", "properties"],
                 related_entity_type_names=[],
-                related_entity_type_set_names=["Datastreams"]
+                related_entity_type_set_names=["Datastreams"],
+                optional_properties=["properties"],
+                dto_class=SensorDTO,
             )
         )
 
@@ -83,7 +98,9 @@ class SensorThingsV11Config(AppConfig):
                 primitive_properties=["id", "phenomenonTime", "result", "resultTime", "validTime"],
                 complex_properties=["resultQuality", "parameters"],
                 related_entity_type_names=["Datastream", "FeatureOfInterest"],
-                related_entity_type_set_names=[]
+                related_entity_type_set_names=[],
+                optional_properties=["resultQuality", "parameters", "validTime"],
+                dto_class=ObservationDTO,
             )
         )
 
@@ -94,33 +111,10 @@ class SensorThingsV11Config(AppConfig):
                 primitive_properties=["id", "name", "description", "encodingType"],
                 complex_properties=["feature", "properties"],
                 related_entity_type_names=[],
-                related_entity_type_set_names=["Observations"]
+                related_entity_type_set_names=["Observations"],
+                optional_properties=["properties"],
+                dto_class=FeatureOfInterestDTO,
             )
         )
 
-        from sensorthings.versions.v1_1.schemas import (
-            ThingResponse, LocationResponse, HistoricalLocationResponse,
-            SensorResponse, ObservedPropertyResponse, FeatureOfInterestResponse,
-            DatastreamResponse, ObservationResponse,
-            ThingPostBody, LocationPostBody, HistoricalLocationPostBody,
-            SensorPostBody, ObservedPropertyPostBody, FeatureOfInterestPostBody,
-            DatastreamPostBody, ObservationPostBody,
-            ThingCollectionResponse, LocationCollectionResponse,
-            HistoricalLocationCollectionResponse, SensorCollectionResponse,
-            ObservedPropertyCollectionResponse, FeatureOfInterestCollectionResponse,
-            DatastreamCollectionResponse, ObservationCollectionResponse,
-        )
-
-        for model in [
-            ThingResponse, LocationResponse, HistoricalLocationResponse,
-            SensorResponse, ObservedPropertyResponse, FeatureOfInterestResponse,
-            DatastreamResponse, ObservationResponse,
-            ThingPostBody, LocationPostBody, HistoricalLocationPostBody,
-            SensorPostBody, ObservedPropertyPostBody, FeatureOfInterestPostBody,
-            DatastreamPostBody, ObservationPostBody,
-            ThingCollectionResponse, LocationCollectionResponse,
-            HistoricalLocationCollectionResponse, SensorCollectionResponse,
-            ObservedPropertyCollectionResponse, FeatureOfInterestCollectionResponse,
-            DatastreamCollectionResponse, ObservationCollectionResponse,
-        ]:
-            model.model_rebuild()
+        import sensorthings.versions.v1_1.schemas  # noqa: F401 — triggers centralized schema build

@@ -10,3 +10,4 @@ class HistoricalLocationDTO(BaseEntityDTO):
     time: ISOTimeString = Absent
 
     thing_id: app_settings.ID_TYPE = Absent
+    location_ids: list = Absent

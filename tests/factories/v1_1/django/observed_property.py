@@ -1,4 +1,4 @@
-from sensorthings.versions.v1_1 import ObservedProperty
+from sensorthings.versions.v1_1.backends.django.models import ObservedProperty
 
 
 def create_test_observed_property(
@@ -8,7 +8,6 @@ def create_test_observed_property(
     description: str = "This is an observed property used for testing.",
     properties: dict | None = None,
 ) -> ObservedProperty:
-    """"""
 
     return ObservedProperty.objects.create(
         name=name,

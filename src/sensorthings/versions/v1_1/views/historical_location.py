@@ -71,10 +71,10 @@ async def create_historical_location_entity(
     try:
         entity = await sensorthings_service.create_entity(
             entity_type=sta.HISTORICAL_LOCATION_ENTITY,
-            payload=payload,
+            payload=payload.dict(exclude_unset=True),
             context=request
         )
-        response.headers["Location"] = entity.iot_self_link
+        response.headers["Location"] = entity["iot_self_link"]
     except Exception as e:
         raise http_error(e)
 
@@ -142,7 +142,7 @@ async def update_historical_location_entity(
         await sensorthings_service.update_entity(
             entity_type=sta.HISTORICAL_LOCATION_ENTITY,
             entity_id=entity_id,
-            payload=payload,
+            payload=payload.dict(exclude_unset=True),
             context=request
         )
     except Exception as e:

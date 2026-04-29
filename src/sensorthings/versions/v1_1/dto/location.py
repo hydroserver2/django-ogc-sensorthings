@@ -12,3 +12,5 @@ class LocationDTO(BaseEntityDTO):
     encoding_type: app_settings.LOCATION_ENCODING_TYPE_VALUE_LITERAL = Absent
     location: app_settings.LOCATION_ENCODING_TYPE_SCHEMA = Absent
     properties: app_settings.PROPERTIES_SCHEMAS.get("Location", Dict) = Absent
+
+    thing_ids: list = Absent

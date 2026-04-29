@@ -69,12 +69,12 @@ async def create_observation_entity(
     """
 
     try:
-        entity = await sensorthings_service.observations.create_entity(
+        entity = await sensorthings_service.create_entity(
             entity_type=sta.OBSERVATION_ENTITY,
-            payload=payload,
+            payload=payload.dict(exclude_unset=True),
             context=request
         )
-        response.headers["Observation"] = entity.iot_self_link
+        response.headers["Location"] = entity["iot_self_link"]
     except Exception as e:
         raise http_error(e)
 
@@ -142,7 +142,7 @@ async def update_observation_entity(
         await sensorthings_service.update_entity(
             entity_type=sta.OBSERVATION_ENTITY,
             entity_id=entity_id,
-            payload=payload,
+            payload=payload.dict(exclude_unset=True),
             context=request
         )
     except Exception as e:
@@ -169,7 +169,7 @@ async def delete_observation_entity(
     entity_id: Path[app_settings.ID_TYPE],
 ) -> tuple[int, None]:
     """
-    Delete a `Observation` entity by ID.
+    Delete an `Observation` entity by ID.
     """
 
     try:

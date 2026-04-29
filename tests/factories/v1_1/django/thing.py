@@ -1,4 +1,4 @@
-from sensorthings.versions.v1_1 import Thing, HistoricalLocation, Location
+from sensorthings.versions.v1_1.backends.django.models import Thing, HistoricalLocation, Location
 
 
 def create_test_thing(
@@ -9,18 +9,17 @@ def create_test_thing(
     locations: list[Location] | None = None,
     historical_locations: list[HistoricalLocation] | None = None,
 ) -> Thing:
-    """"""
 
-    if locations is None:
-        locations = []
-
-    if historical_locations is None:
-        historical_locations = []
-
-    return Thing.objects.create(
+    thing = Thing.objects.create(
         name=name,
         description=description,
         properties=properties,
-        locations=locations,
-        historical_locations=historical_locations,
     )
+
+    if locations:
+        thing.locations.set(locations)
+
+    if historical_locations:
+        thing.historical_locations.set(historical_locations)
+
+    return thing

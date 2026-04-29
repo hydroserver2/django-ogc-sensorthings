@@ -10,3 +10,5 @@ class ThingDTO(BaseEntityDTO):
     name: str = Absent
     description: str = Absent
     properties: app_settings.PROPERTIES_SCHEMAS.get("Sensor", Dict) = Absent
+
+    location_ids: list = Absent

@@ -1,5 +1,5 @@
 from datetime import datetime
-from sensorthings.versions.v1_1 import Datastream, Sensor, Thing, ObservedProperty
+from sensorthings.versions.v1_1.backends.django.models import Datastream, Sensor, Thing, ObservedProperty
 from .thing import create_test_thing
 from .sensor import create_test_sensor
 from .observed_property import create_test_observed_property
@@ -21,7 +21,6 @@ def create_test_datastream(
     sensor: Sensor | None = None,
     observed_property: ObservedProperty | None = None,
 ) -> Datastream:
-    """"""
 
     if unit_of_measurement is None:
         unit_of_measurement = {

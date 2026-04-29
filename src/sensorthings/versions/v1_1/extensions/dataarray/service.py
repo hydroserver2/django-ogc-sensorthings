@@ -27,7 +27,7 @@ class DataArrayServiceMixin:
         if result_format == "dataArray" and group_by is not None:
             raise ValueError("$resultFormat is not supported inside $expand elements")
 
-        if entity_type == "Observations" and result_format == "dataArray":
+        if entity_type.name == "Observation" and result_format == "dataArray":
             select_extra = ["datastream_id"]
             orderby = f"Datastream/id desc,{orderby}" if orderby else "Datastream/id desc"
 
@@ -46,7 +46,7 @@ class DataArrayServiceMixin:
             next_link_target=next_link_target,
         )
 
-        if entity_type != "Datastreams" or result_format != "dataArray":
+        if entity_type.name != "Observation" or result_format != "dataArray":
             return collection
 
         validated_select = validate_select(entity_type, select)
@@ -64,7 +64,7 @@ class DataArrayServiceMixin:
                 to_camel(field) for field in validated_select
             ]
 
-        return {
+        response = {
             "value": [
                 {
                     "datastream_link": build_self_link(
@@ -85,3 +85,11 @@ class DataArrayServiceMixin:
                 )
             ]
         }
+
+        if collection.get("iot_count"):
+            response["iot_count"] = collection["iot_count"]
+
+        if collection.get("iot_next_link"):
+            response["iot_next_link"] = collection["iot_next_link"]
+
+        return response

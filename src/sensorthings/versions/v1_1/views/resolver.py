@@ -3,7 +3,7 @@ from ninja.responses import Response
 from django.http import HttpRequest, HttpResponse
 from sensorthings.http import RouterDefinition, OperationDefinition, http_error
 from sensorthings.versions.v1_1 import sensorthings_service
-from sensorthings.versions.v1_1.schemas import (BaseSchema, CollectionQuery, ThingCollectionResponse, ThingResponse,
+from sensorthings.versions.v1_1.schemas import (CollectionQuery, ThingCollectionResponse, ThingResponse,
                                                 LocationCollectionResponse, LocationResponse,
                                                 HistoricalLocationCollectionResponse, HistoricalLocationResponse,
                                                 DatastreamCollectionResponse, DatastreamResponse,
@@ -43,7 +43,9 @@ async def resolve_resource_path(
     path: str,
     query: Query[CollectionQuery],
 ) -> Response | HttpResponse:
-    """"""
+    """
+    Resolve a SensorThings resource path.
+    """
 
     try:
         path_segments = [segment for segment in path.strip("/").split("/") if segment] if path else []

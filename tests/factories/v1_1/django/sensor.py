@@ -1,4 +1,4 @@
-from sensorthings.versions.v1_1 import Sensor
+from sensorthings.versions.v1_1.backends.django.models import Sensor
 
 
 def create_test_sensor(
@@ -9,7 +9,6 @@ def create_test_sensor(
     metadata: str = "https://www.example.com/sensors/test.pdf",
     properties: dict | None = None,
 ) -> Sensor:
-    """"""
 
     return Sensor.objects.create(
         name=name,
