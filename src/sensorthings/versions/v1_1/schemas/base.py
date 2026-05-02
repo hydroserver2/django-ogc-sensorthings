@@ -3,6 +3,7 @@ from typing import Generic, TypeVar
 from ninja import Schema, Field
 from pydantic import ConfigDict
 from pydantic.alias_generators import to_camel
+from pydantic.fields import FieldInfo
 from sensorthings.types import Absent
 from sensorthings.versions.v1_1 import sta
 from sensorthings.versions.v1_1 import app_settings
@@ -46,24 +47,38 @@ class PartialMetaclass(type(Schema)):
     """
     Metaclass for creating "partial" schemas.
 
-    Marks all fields as `Absent` by default, necessary for PATCH operations where only provided fields should
-    be included, or responses where a subset of fields is selected by the client. Copies all inherited model fields and
-    annotations to avoid mutating base classes.
-
-    Note: modifying `model_fields` after class creation does not update the compiled Pydantic core
-    schema on its own. Callers that need validation to reflect the Absent defaults (e.g. PATCH bodies)
-    must call `model_rebuild(force=True)` after construction.
+    Marks all fields as `Absent` by default by re-declaring inherited fields directly in the
+    class body before Pydantic processes them. This avoids assigning to the `model_fields`
+    property and ensures Absent defaults survive `model_rebuild(force=True)`.
     """
 
     def __new__(
         cls, name: str, bases: tuple[type, ...], attrs: dict, **kwargs
     ) -> "PartialMetaclass":
-        new_cls = super().__new__(cls, name, bases, attrs, **kwargs)
-        new_cls.model_fields = {
-            k: copy.deepcopy(v) for k, v in new_cls.model_fields.items()
-        }
+        annotations = attrs.setdefault("__annotations__", {})
 
-        for field in new_cls.model_fields.values():
-            field.default = Absent
+        # Re-declare inherited fields with Absent defaults before Pydantic compiles the class,
+        # so they live in the class __dict__ and survive model_rebuild(force=True).
+        # Process bases in MRO order so the first (most-derived) base wins on conflicts.
+        for base in bases:
+            if not hasattr(base, "model_fields"):
+                continue
+            for field_name, field_info in base.model_fields.items():
+                if field_name in annotations:
+                    continue
+                new_field = copy.deepcopy(field_info)
+                new_field.default = Absent
+                new_field.default_factory = None
+                annotations[field_name] = field_info.annotation
+                attrs[field_name] = new_field
 
-        return new_cls
+        # Apply to fields declared directly in this class body (e.g. from the namespace dict).
+        for field_name in list(annotations.keys()):
+            val = attrs.get(field_name)
+            if isinstance(val, FieldInfo):
+                new_field = copy.deepcopy(val)
+                new_field.default = Absent
+                new_field.default_factory = None
+                attrs[field_name] = new_field
+
+        return super().__new__(cls, name, bases, attrs, **kwargs)
