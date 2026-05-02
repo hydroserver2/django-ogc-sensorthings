@@ -1,0 +1,1 @@
+from .multi_datastream import router_definition as multi_datastream_router_definition

@@ -1,0 +1,11 @@
+from .root import router_definition as root_router_definition
+from .thing import router_definition as thing_router_definition
+from .location import router_definition as location_router_definition
+from .historical_location import router_definition as historical_location_router_definition
+from .datastream import router_definition as datastream_router_definition
+from .sensor import router_definition as sensor_router_definition
+from .observed_property import router_definition as observed_property_router_definition
+from .observation import router_definition as observation_router_definition
+from .feature_of_interest import router_definition as feature_of_interest_router_definition
+from .resolver import router_definition as resolver_router_definition
+from .batch import router_definition as batch_router_definition

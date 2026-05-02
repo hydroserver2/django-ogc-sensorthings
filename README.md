@@ -1,57 +1,99 @@
-# HydroServer SensorThings
+# Django SensorThings
 
-The HydroServer SensorThings Python package is an extension that helps implement the OGC SensorThings API specification in Django. The package is primarily built on top of the  [Django Ninja REST Framework](https://github.com/vitalik/django-ninja).
+A Django extension that adds [OGC SensorThings API v1.1](https://www.ogc.org/standard/sensorthings/) support to your project. It provides a fully compliant REST API for managing sensor data, built on top of [Django Ninja](https://django-ninja.dev/) and [Pydantic](https://docs.pydantic.dev/).
+
+## Features
+
+- Full SensorThings API v1.1 compliance (Things, Locations, Datastreams, Observations, and more)
+- Built-in Django ORM backend
+- Optional extensions: Data Array, MultiDatastream
+- Extensible backend adapter interface for custom storage layers
 
 ## Installation
 
-You can install HydroServer SensorThings using pip:
-
 ```
-pip install hydroserver-sensorthings
+pip install django-sensorthings
 ```
 
-## Usage
+## Quick Start
 
-To use HydroServer SensorThings in your Django project, add the following line to your `MIDDLEWARE` setting:
+**1. Add the apps to `INSTALLED_APPS`:**
 
-```
-MIDDLEWARE = [
-	# ...
-	'sensorthings.middleware.SensorThingsMiddleware',
-	# ...
+```python
+INSTALLED_APPS = [
+    ...
+    "sensorthings.versions.v1_1",
+    "sensorthings.versions.v1_1.backends.django",
 ]
 ```
 
-To initialize the SensorThings API in your project, you must create an engine class that implements all the required methods from `sensorthings.SensorThingsBaseEngine`. These methods will be used to map the SensorThings API to your data source.
+To enable optional extensions, add them as well:
 
-After setting up your custom engine class, you can initialize the SensorThings API in your urls.py file:
-
+```python
+    "sensorthings.versions.v1_1.extensions.dataarray",
 ```
-from django.urls import path
-from sensorthings import SensorThingsAPI
-from .engine import YourCustomSensorThingsEngine
 
+**2. Configure the library in your settings:**
 
-sta_core = SensorThingsAPI(
-    title='Test SensorThings API',
-    version='1.1',
-    description='This is an example SensorThings API.',
-    engine=YourCustomSensorThingsEngine
-)
+```python
+from uuid import UUID
+
+SENSORTHINGS_V1_1_SERVICE_URL = "http://localhost:8000/sensorthings"
+SENSORTHINGS_V1_1_BACKEND_ADAPTER = "sensorthings.versions.v1_1.backends.django.adapter.DjangoBackendAdapter"
+SENSORTHINGS_V1_1_ID_TYPE = UUID
+SENSORTHINGS_V1_1_ID_DELIMITER = "'"
+```
+
+**3. Include the URL patterns:**
+
+```python
+from django.urls import path, include
 
 urlpatterns = [
-    path('sensorthings/v1.1/', sta_core.urls),
+    ...
+    path("sensorthings/", include("sensorthings.versions.v1_1.urls")),
 ]
 ```
 
-To enable the SensorThings DataArray extension, your custom SensorThings should subclass `sensorthings.extensions.DataArrayBaseEngine` in addition to `sensorthings.SensorThingsBaseEngine`.
+**4. Run migrations:**
 
-You can also modify specific SensorThings endpoints and components using `sensorthings.SensorThingsEndpoint` to add custom authorization rules, disable certain endpoints, or customize SensorThings properties schemas.
+```
+python manage.py migrate
+```
 
-## Documentation
+The API will be available at `http://localhost:8000/sensorthings/v1.1/`.
 
-For detailed documentation on how to use HydroServer SensorThings, please refer to the [official documentation](https://hydroserver2.github.io/hydroserver-sensorthings/).
+Interactive API docs (Swagger UI) are served at `http://localhost:8000/sensorthings/v1.1/docs`.
 
-## Funding and Acknowledgements
+## Configuration Reference
 
-Funding for this project was provided by the National Oceanic & Atmospheric Administration (NOAA), awarded to the Cooperative Institute for Research to Operations in Hydrology (CIROH) through the NOAA Cooperative Agreement with The University of Alabama (NA22NWS4320003). Utah State University is a founding member of CIROH and receives funding under subaward from the University of Alabama. Additional funding and support have been provided by the State of Utah Division of Water Rights, the World Meorological Organization, and the Utah Water Research laboratory at Utah State University.
+| Setting | Description |
+|---|---|
+| `SENSORTHINGS_V1_1_SERVICE_URL` | Base URL of the service, used when building self links and navigation links |
+| `SENSORTHINGS_V1_1_BACKEND_ADAPTER` | Dotted path to the backend adapter class |
+| `SENSORTHINGS_V1_1_ID_TYPE` | Python type used for entity IDs (e.g. `UUID`, `int`) |
+| `SENSORTHINGS_V1_1_ID_DELIMITER` | Delimiter wrapping IDs in URLs (e.g. `'` for `Things('id')`) |
+
+## Extensions
+
+### Data Array
+
+Adds the `$resultFormat=dataArray` query parameter to the Observations endpoint, which returns observations grouped by Datastream in a compact array format.
+
+```python
+INSTALLED_APPS = [
+    ...
+    "sensorthings.versions.v1_1.extensions.dataarray",
+]
+```
+
+### MultiDatastream
+
+Adds support for the MultiDatastream entity type, which associates a single Datastream with multiple observed properties.
+
+```python
+INSTALLED_APPS = [
+    ...
+    "sensorthings.versions.v1_1.extensions.multidatastream",
+]
+```
