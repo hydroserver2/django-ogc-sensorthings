@@ -9,6 +9,7 @@ class DataArrayConfig(AppConfig):
     def ready(self):
         from sensorthings.versions.v1_1.views import observation_router_definition
         from sensorthings.versions.v1_1 import service as service_module
+        from sensorthings.versions.v1_1.backends.base import BASE_CONFORMANCE_URI, conformance_registry
         from sensorthings.versions.v1_1.extensions.dataarray.service import DataArrayServiceMixin
         from sensorthings.versions.v1_1.extensions.dataarray.views.observation import (
             get_observation_collection_operation,
@@ -26,3 +27,7 @@ class DataArrayConfig(AppConfig):
 
         observation_router_definition.operations["get_observation_collection"] = get_observation_collection_operation
         observation_router_definition.operations["create_observation_entities"] = create_observations_operation
+
+        conformance_registry.extend([
+            f"{BASE_CONFORMANCE_URI}/data-array",
+        ])

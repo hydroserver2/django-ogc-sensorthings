@@ -11,6 +11,7 @@ class MultiDatastreamConfig(AppConfig):
         from sensorthings.types import EntityType
         from sensorthings.versions.v1_1 import STA
         from sensorthings.versions.v1_1.backends import get_backend_adapter
+        from sensorthings.versions.v1_1.backends.base import BASE_CONFORMANCE_URI, conformance_registry
         from sensorthings.versions.v1_1.extensions.multidatastream.backends import BaseMultiDatastreamAdapterMixin
         from sensorthings.versions.v1_1.schemas import schema_factory
         from sensorthings.versions.v1_1.extensions.multidatastream.schemas.multi_datastream import MultiDatastreamFields
@@ -69,3 +70,7 @@ class MultiDatastreamConfig(AppConfig):
             multi_datastream_patch_body,
         ):
             _schema.model_rebuild(_types_namespace=_ext_types)
+
+        conformance_registry.extend([
+            f"{BASE_CONFORMANCE_URI}/multi-datastream",
+        ])

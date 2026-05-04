@@ -9,6 +9,7 @@ class SensorThingsV11Config(AppConfig):
     def ready(self) -> None:
         from sensorthings.types import EntityType
         from sensorthings.versions.v1_1 import STA
+        from sensorthings.versions.v1_1.backends.base import BASE_CONFORMANCE_URI, conformance_registry
         from sensorthings.versions.v1_1.dto import (
             ThingDTO, LocationDTO, HistoricalLocationDTO, SensorDTO,
             ObservedPropertyDTO, DatastreamDTO, ObservationDTO, FeatureOfInterestDTO,
@@ -116,5 +117,55 @@ class SensorThingsV11Config(AppConfig):
                 dto_class=FeatureOfInterestDTO,
             )
         )
+
+        # TODO: Allow more granular customization of server conformance.
+        # conformance_registry.extend([
+        #     f"{BASE_CONFORMANCE_URI}/datamodel/entity-control-information/common-control-information",
+        #     f"{BASE_CONFORMANCE_URI}/datamodel/thing/properties",
+        #     f"{BASE_CONFORMANCE_URI}/datamodel/thing/relations",
+        #     f"{BASE_CONFORMANCE_URI}/datamodel/location/properties",
+        #     f"{BASE_CONFORMANCE_URI}/datamodel/location/relations",
+        #     f"{BASE_CONFORMANCE_URI}/datamodel/historical-location/properties",
+        #     f"{BASE_CONFORMANCE_URI}/datamodel/historical-location/relations",
+        #     f"{BASE_CONFORMANCE_URI}/datamodel/datastream/properties",
+        #     f"{BASE_CONFORMANCE_URI}/datamodel/datastream/relations",
+        #     f"{BASE_CONFORMANCE_URI}/datamodel/sensor/properties",
+        #     f"{BASE_CONFORMANCE_URI}/datamodel/sensor/relations",
+        #     f"{BASE_CONFORMANCE_URI}/datamodel/observed-property/properties",
+        #     f"{BASE_CONFORMANCE_URI}/datamodel/observed-property/relations",
+        #     f"{BASE_CONFORMANCE_URI}/datamodel/observation/properties",
+        #     f"{BASE_CONFORMANCE_URI}/datamodel/observation/relations",
+        #     f"{BASE_CONFORMANCE_URI}/datamodel/feature-of-interest/properties",
+        #     f"{BASE_CONFORMANCE_URI}/datamodel/feature-of-interest/relations",
+        #     f"{BASE_CONFORMANCE_URI}/resource-path/resource-path-to-entities",
+        #     f"{BASE_CONFORMANCE_URI}/request-data/status-code",
+        #     f"{BASE_CONFORMANCE_URI}/request-data/query-status-code",
+        #     f"{BASE_CONFORMANCE_URI}/request-data/order",
+        #     f"{BASE_CONFORMANCE_URI}/request-data/orderby",
+        #     f"{BASE_CONFORMANCE_URI}/request-data/top",
+        #     f"{BASE_CONFORMANCE_URI}/request-data/skip",
+        #     f"{BASE_CONFORMANCE_URI}/request-data/count",
+        #     f"{BASE_CONFORMANCE_URI}/request-data/filter",
+        #     f"{BASE_CONFORMANCE_URI}/request-data/built-in-filter-operations",
+        #     f"{BASE_CONFORMANCE_URI}/request-data/built-in-query-functions",
+        #     f"{BASE_CONFORMANCE_URI}/request-data/expand",
+        #     f"{BASE_CONFORMANCE_URI}/request-data/select",
+        #     f"{BASE_CONFORMANCE_URI}/request-data/pagination",
+        #     f"{BASE_CONFORMANCE_URI}/create-update-delete/create-entity",
+        #     f"{BASE_CONFORMANCE_URI}/create-update-delete/link-to-existing-entities",
+        #     f"{BASE_CONFORMANCE_URI}/create-update-delete/deep-insert",
+        #     f"{BASE_CONFORMANCE_URI}/create-update-delete/deep-insert-status-code",
+        #     f"{BASE_CONFORMANCE_URI}/create-update-delete/update-entity",
+        #     f"{BASE_CONFORMANCE_URI}/create-update-delete/delete-entity",
+        #     f"{BASE_CONFORMANCE_URI}/create-update-delete/historical-location-auto-creation",
+        #     f"{BASE_CONFORMANCE_URI}/create-update-delete/historical-location-manual-creation",
+        # ])
+
+        conformance_registry.extend([
+            f"{BASE_CONFORMANCE_URI}/datamodel",
+            f"{BASE_CONFORMANCE_URI}/resource-path",
+            f"{BASE_CONFORMANCE_URI}/request-data",
+            f"{BASE_CONFORMANCE_URI}/create-update-delete",
+        ])
 
         import sensorthings.versions.v1_1.schemas  # noqa: F401 — triggers centralized schema build

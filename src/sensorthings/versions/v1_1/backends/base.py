@@ -12,7 +12,15 @@ from sensorthings.versions.v1_1.dto import (
 )
 
 
+BASE_CONFORMANCE_URI = "http://www.opengis.net/spec/iot_sensing/1.1/req"
+
+conformance_registry: list[str] = []
+
+
 class BaseBackendAdapter(_CoreBaseBackendAdapter):
+
+    def get_server_settings(self) -> dict:
+        return {"conformance": list(conformance_registry)}
 
     # ------------------------------------------------------------------
     # Things
