@@ -7,13 +7,16 @@ class DataArrayConfig(AppConfig):
     verbose_name = "SensorThings v1.1: Data Array"
 
     def ready(self):
-        from sensorthings.versions.v1_1.views import observation_router_definition
+        from sensorthings.versions.v1_1.views import observation_router_definition, resolver_router_definition
         from sensorthings.versions.v1_1 import service as service_module
         from sensorthings.versions.v1_1.backends.base import BASE_CONFORMANCE_URI, conformance_registry
         from sensorthings.versions.v1_1.extensions.dataarray.service import DataArrayServiceMixin
         from sensorthings.versions.v1_1.extensions.dataarray.views.observation import (
             get_observation_collection_operation,
             create_observations_operation,
+        )
+        from sensorthings.versions.v1_1.extensions.dataarray.views.resolver import (
+            resolve_resource_path_operation,
         )
 
         data_array_service_class = type(
@@ -27,6 +30,8 @@ class DataArrayConfig(AppConfig):
 
         observation_router_definition.operations["get_observation_collection"] = get_observation_collection_operation
         observation_router_definition.operations["create_observation_entities"] = create_observations_operation
+
+        resolver_router_definition.operations["resolve_resource_path"] = resolve_resource_path_operation
 
         conformance_registry.extend([
             f"{BASE_CONFORMANCE_URI}/data-array",

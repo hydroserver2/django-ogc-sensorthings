@@ -24,7 +24,7 @@ class DataArrayServiceMixin:
         next_link_target: list[str] | None = None,
         result_format: Literal["dataArray"] | None = None
     ) -> dict:
-        if result_format == "dataArray" and group_by is not None:
+        if result_format == "dataArray" and next_link_target:
             raise ValueError("$resultFormat is not supported inside $expand elements")
 
         if entity_type.name == "Observation" and result_format == "dataArray":
@@ -48,6 +48,13 @@ class DataArrayServiceMixin:
 
         if entity_type.name != "Observation" or result_format != "dataArray":
             return collection
+
+        # When called via a nested resource path, the base returns a grouped dict.
+        # Unwrap it before transforming, then rewrap so the caller can unwrap as normal.
+        if group_by is not None:
+            inner_collection = next(iter(collection.values()), {"value": []})
+        else:
+            inner_collection = collection
 
         validated_select = validate_select(entity_type, select)
 
@@ -80,16 +87,19 @@ class DataArrayServiceMixin:
                     ]
                 }
                 for datastream_id, group in groupby(
-                    collection["value"],
+                    inner_collection["value"],
                     key=lambda entity: entity.get("datastream_id")
                 )
             ]
         }
 
-        if collection.get("iot_count"):
-            response["iot_count"] = collection["iot_count"]
+        if inner_collection.get("iot_count"):
+            response["iot_count"] = inner_collection["iot_count"]
 
-        if collection.get("iot_next_link"):
-            response["iot_next_link"] = collection["iot_next_link"]
+        if inner_collection.get("iot_next_link"):
+            response["iot_next_link"] = inner_collection["iot_next_link"]
+
+        if group_by is not None:
+            return {next(iter(collection.keys())): response}
 
         return response

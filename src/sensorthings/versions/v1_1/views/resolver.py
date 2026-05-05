@@ -50,7 +50,7 @@ async def resolve_resource_path(
     try:
         path_segments = [segment for segment in path.strip("/").split("/") if segment] if path else []
         result, result_type = await sensorthings_service.resolve_entity_path(
-            path_segments=[segment for segment in path.strip("/").split("/") if segment] if path else [],
+            path_segments=path_segments,
             context=request,
             **query.dict(exclude_unset=True)
         )
