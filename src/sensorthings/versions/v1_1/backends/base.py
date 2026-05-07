@@ -2,13 +2,13 @@ from abc import abstractmethod
 from typing import Any
 from odata_query.ast import _Node  # noqa
 from django.http import HttpRequest
-from sensorthings.core.backends.base import BaseBackendAdapter as _CoreBaseBackendAdapter
+from sensorthings.types import OrderByField
+from sensorthings.core.backends.base import AbstractBaseBackendAdapter
 from sensorthings.versions.v1_1.conf import app_settings
 from sensorthings.versions.v1_1.dto import (
-    EntityResultSetDTO, OrderByField,
-    ThingDTO, LocationDTO, HistoricalLocationDTO,
-    SensorDTO, ObservedPropertyDTO, DatastreamDTO,
-    ObservationDTO, FeatureOfInterestDTO,
+    EntityResultSetDTO, ThingDTO, LocationDTO,
+    HistoricalLocationDTO, SensorDTO, ObservedPropertyDTO,
+    DatastreamDTO, ObservationDTO, FeatureOfInterestDTO,
 )
 
 
@@ -17,7 +17,7 @@ BASE_CONFORMANCE_URI = "http://www.opengis.net/spec/iot_sensing/1.1/req"
 conformance_registry: list[str] = []
 
 
-class BaseBackendAdapter(_CoreBaseBackendAdapter):
+class BaseBackendAdapter(AbstractBaseBackendAdapter):
 
     def get_server_settings(self) -> dict:
         return {"conformance": list(conformance_registry)}
