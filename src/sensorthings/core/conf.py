@@ -35,7 +35,7 @@ class BaseSettings:
     DEFAULT_AUTH_HANDLER: list[Callable] | None = None
     """Default authentication handler for HTTP endpoints."""
 
-    BACKEND_ADAPTER: None = None  # type("BackendAdapter") = None  # TODO
+    BACKEND_ADAPTER: str | None = None
     """The backend adapter this service is connected to."""
 
     def __post_init__(self):
