@@ -1,1 +1,1 @@
-from .base import BaseBackendAdapter
+from .base import AbstractBaseBackendAdapter
