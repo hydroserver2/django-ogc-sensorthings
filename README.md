@@ -1,4 +1,4 @@
-# Django SensorThings
+# Django OGC SensorThings
 
 A Django extension that adds [OGC SensorThings API v1.1](https://www.ogc.org/standard/sensorthings/) support to your project. It provides a fully compliant REST API for managing sensor data, built on top of [Django Ninja](https://django-ninja.dev/) and [Pydantic](https://docs.pydantic.dev/).
 
