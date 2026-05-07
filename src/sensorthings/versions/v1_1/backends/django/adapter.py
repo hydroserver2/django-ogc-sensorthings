@@ -1,17 +1,20 @@
 from typing import Any, Callable
 from itertools import groupby
 from collections import defaultdict
+from contextlib import asynccontextmanager
+from asgiref.sync import sync_to_async
 from odata_query.ast import _Node  # noqa
 from odata_query.django.django_q import AstToDjangoQVisitor
 from django.http import HttpRequest
+from django.db import transaction as django_transaction
 from django.db.models import QuerySet, Manager, Count, F, Window, Model
 from django.db.models.functions import RowNumber
 from django.db.models.expressions import OrderBy
 from pydantic.alias_generators import to_snake
-from sensorthings.types import Absent
+from sensorthings.types import Absent, OrderByField, OrderByDirection
 from sensorthings.versions.v1_1.conf import app_settings
-from sensorthings.versions.v1_1.dto import (EntityResultSetDTO, CollectionDTO, OrderByField, OrderByDirection, ThingDTO,
-                                            LocationDTO, HistoricalLocationDTO, SensorDTO, ObservedPropertyDTO,
+from sensorthings.versions.v1_1.dto import (EntityResultSetDTO, CollectionDTO, ThingDTO, LocationDTO,
+                                            HistoricalLocationDTO, SensorDTO, ObservedPropertyDTO,
                                             DatastreamDTO, ObservationDTO, FeatureOfInterestDTO)
 from .models import (Thing, Location, HistoricalLocation, Sensor, ObservedProperty, Datastream, Observation,
                      FeatureOfInterest)
@@ -179,6 +182,21 @@ class DjangoBackendAdapter(
     BaseBackendAdapter,
     DjangoBaseBackendAdapter
 ):
+
+    @asynccontextmanager
+    async def transaction(self):
+        ctx = django_transaction.atomic()
+        await sync_to_async(ctx.__enter__, thread_sensitive=True)()
+        try:
+            yield
+        except Exception as exc:
+            suppress = await sync_to_async(ctx.__exit__, thread_sensitive=True)(
+                type(exc), exc, exc.__traceback__
+            )
+            if not suppress:
+                raise
+        else:
+            await sync_to_async(ctx.__exit__, thread_sensitive=True)(None, None, None)
 
     # ------------------------------------------------------------------
     # Things
