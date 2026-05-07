@@ -1,13 +1,26 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
 *.pyc
+
+# Databases
 *.sqlite3
 *.db
-*.egg-info
-*test.ipynb
-.DS_Store
-.idea
+
+# Environments and Secrets
 .env
-.pytest_cache
-__pycache__/
-dist
-build
-requirements.txt
+
+# Distribution / Build
+build/
+dist/
+*.egg-info/
+
+# Unit testing / coverage reports
+.pytest_cache/
+
+# IDEs and OS files
+.idea/
+.DS_Store
+CLAUDE.md
+
+# Temporary Notebooks
+*test.ipynb
