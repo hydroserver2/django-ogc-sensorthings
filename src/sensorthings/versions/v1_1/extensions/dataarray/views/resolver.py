@@ -2,7 +2,7 @@ from ninja import Query
 from ninja.responses import Response
 from django.http import HttpRequest, HttpResponse
 from sensorthings.http import OperationDefinition, http_error
-from sensorthings.versions.v1_1 import sensorthings_service
+from sensorthings.versions.v1_1 import sensorthings_service, app_settings
 from sensorthings.versions.v1_1.views.resolver import response_schemas
 from sensorthings.versions.v1_1.extensions.dataarray.schemas import (
     ObservationDataArrayCollectionQuery,
@@ -45,5 +45,6 @@ resolve_resource_path_operation = OperationDefinition(
     path="/{path:path}",
     methods=["GET"],
     view_func=resolve_resource_path,
+    auth=app_settings.DEFAULT_AUTH_HANDLER,
     include_in_schema=False
 )
