@@ -4,6 +4,7 @@ from typing import Any, Callable
 from django.http import HttpRequest
 from asgiref.sync import sync_to_async
 from pydantic.alias_generators import to_snake
+from sensorthings.core.protocol import BaseProtocol
 from sensorthings.types import Absent, EntityType
 from sensorthings.http import (build_self_link, build_nav_link, build_next_link, validate_select, validate_expand,
                                validate_orderby, validate_filters)
@@ -11,7 +12,7 @@ from sensorthings.http import (build_self_link, build_nav_link, build_next_link,
 
 class SensorThingsService:
 
-    def __init__(self, protocol, settings, get_backend_adapter: Callable):
+    def __init__(self, protocol: type[BaseProtocol], settings, get_backend_adapter: Callable):
         self._backend_adapter = None
         self._get_backend_adapter = get_backend_adapter
         self._post_create_hooks: list[tuple[Callable, list | None]] = []
@@ -352,66 +353,68 @@ class SensorThingsService:
         `iot_self_link` for the created entity.
         """
 
-        related_entity_ids = {}
-        deferred_payloads = []
+        async with self.backend_adapter.transaction():
 
-        # Resolve required single related entities — FK lives on the current entity
-        for related_name in entity_type.related_entity_type_names:
-            if (related_dto_name := to_snake(related_name)) in payload:
-                related_type = self.protocol.get_entity_type(related_name)
-                related_entity_ids[f"{related_dto_name}_id"] = await self.resolve_nested_entity(
-                    related_type, payload.pop(related_dto_name), context
-                )
+            related_entity_ids = {}
+            deferred_payloads = []
 
-        # Resolve collection related entities
-        for related_set_name in entity_type.related_entity_type_set_names:
-            if (related_set_dto_name := to_snake(related_set_name)) in payload:
-                related_type = self.protocol.get_entity_type(related_set_name)
-                snake_entity = to_snake(related_type.name)
-
-                if entity_type.name in related_type.related_entity_type_names:
-                    # FK-child: the related entity carries a FK back to the current entity.
-                    # Defer creation until after the current entity exists.
-                    deferred_payloads.append((related_type, payload.pop(related_set_dto_name)))
-                else:
-                    # M2M: resolve all items first, collect IDs, pass to DTO.
-                    related_entity_ids[f"{snake_entity}_ids"] = await self.resolve_nested_entities(
-                        related_type, payload.pop(related_set_dto_name), context
+            # Resolve required single related entities — FK lives on the current entity
+            for related_name in entity_type.related_entity_type_names:
+                if (related_dto_name := to_snake(related_name)) in payload:
+                    related_type = self.protocol.get_entity_type(related_name)
+                    related_entity_ids[f"{related_dto_name}_id"] = await self.resolve_nested_entity(
+                        related_type, payload.pop(related_dto_name), context
                     )
 
-        dto = entity_type.build_dto(
-            **{
-                to_snake(prop): value
-                for prop, value in payload.items()
-            },
-            **related_entity_ids
-        )
+            # Resolve collection related entities
+            for related_set_name in entity_type.related_entity_type_set_names:
+                if (related_set_dto_name := to_snake(related_set_name)) in payload:
+                    related_type = self.protocol.get_entity_type(related_set_name)
+                    snake_entity = to_snake(related_type.name)
 
-        entity_ids = await self.run_adapter_operation("create", entity_type, payload=[dto], context=context)
-        entity_id = entity_ids[0]
+                    if entity_type.name in related_type.related_entity_type_names:
+                        # FK-child: the related entity carries a FK back to the current entity.
+                        # Defer creation until after the current entity exists.
+                        deferred_payloads.append((related_type, payload.pop(related_set_dto_name)))
+                    else:
+                        # M2M: resolve all items first, collect IDs, pass to DTO.
+                        related_entity_ids[f"{snake_entity}_ids"] = await self.resolve_nested_entities(
+                            related_type, payload.pop(related_set_dto_name), context
+                        )
 
-        # Create FK-child entities, injecting the newly created parent ID
-        parent_ref_key = to_snake(entity_type.name)
-        for related_type, nested_payloads in deferred_payloads:
-            for nested_payload in nested_payloads:
-                child_payload = nested_payload if parent_ref_key in nested_payload else {
-                    **nested_payload, parent_ref_key: {"id": entity_id}
-                }
-                await self.create_entity(related_type, child_payload, context)
-
-        for hook, entity_types in self._post_create_hooks:
-            if entity_types is None or entity_type in entity_types:
-                await hook(entity_type=entity_type, entity_id=entity_id, context=context)
-
-        return {
-            "iot_id": entity_id,
-            "iot_self_link": build_self_link(
-                entity_type_set_name=entity_type.set_name,
-                iot_id=entity_id,
-                protocol=self.protocol,
-                settings=self.settings
+            dto = entity_type.build_dto(
+                **{
+                    to_snake(prop): value
+                    for prop, value in payload.items()
+                },
+                **related_entity_ids
             )
-        }
+
+            entity_ids = await self.run_adapter_operation("create", entity_type, payload=[dto], context=context)
+            entity_id = entity_ids[0]
+
+            # Create FK-child entities, injecting the newly created parent ID
+            parent_ref_key = to_snake(entity_type.name)
+            for related_type, nested_payloads in deferred_payloads:
+                for nested_payload in nested_payloads:
+                    child_payload = nested_payload if parent_ref_key in nested_payload else {
+                        **nested_payload, parent_ref_key: {"id": entity_id}
+                    }
+                    await self.create_entity(related_type, child_payload, context)
+
+            for hook, entity_types in self._post_create_hooks:
+                if entity_types is None or entity_type in entity_types:
+                    await hook(entity_type=entity_type, entity_id=entity_id, context=context)
+
+            return {
+                "iot_id": entity_id,
+                "iot_self_link": build_self_link(
+                    entity_type_set_name=entity_type.set_name,
+                    iot_id=entity_id,
+                    protocol=self.protocol,
+                    settings=self.settings
+                )
+            }
 
     async def update_entity(
         self,
@@ -422,29 +425,31 @@ class SensorThingsService:
     ) -> None:
         """Apply a partial update to an existing entity, resolving any FK reassignments by ID."""
 
-        related_entity_ids = {}
+        async with self.backend_adapter.transaction():
 
-        for related_name in entity_type.related_entity_type_names:
-            if (related_dto_name := to_snake(related_name)) in payload:
-                related_type = self.protocol.get_entity_type(related_name)
-                related_entity_ids[f"{related_dto_name}_id"] = await self.resolve_nested_entity(
-                    related_type, payload.pop(related_dto_name), context
-                )
+            related_entity_ids = {}
 
-        dto = entity_type.build_dto(
-            **{
-                to_snake(prop): value
-                for prop, value in payload.items()
-            },
-            **related_entity_ids
-        )
+            for related_name in entity_type.related_entity_type_names:
+                if (related_dto_name := to_snake(related_name)) in payload:
+                    related_type = self.protocol.get_entity_type(related_name)
+                    related_entity_ids[f"{related_dto_name}_id"] = await self.resolve_nested_entity(
+                        related_type, payload.pop(related_dto_name), context
+                    )
 
-        await self.run_adapter_operation(
-            "update", entity_type, **{
-                "payload": {entity_id: dto},
-                "context": context,
-            }
-        )
+            dto = entity_type.build_dto(
+                **{
+                    to_snake(prop): value
+                    for prop, value in payload.items()
+                },
+                **related_entity_ids
+            )
+
+            await self.run_adapter_operation(
+                "update", entity_type, **{
+                    "payload": {entity_id: dto},
+                    "context": context,
+                }
+            )
 
     async def delete_entity(
         self,
@@ -454,11 +459,12 @@ class SensorThingsService:
     ) -> None:
         """Delete an entity by ID, raising `LookupError` if it does not exist."""
 
-        await self.run_adapter_operation(
-            "delete", entity_type,
-            entity_ids=[entity_id],
-            context=context,
-        )
+        async with self.backend_adapter.transaction():
+            await self.run_adapter_operation(
+                "delete", entity_type,
+                entity_ids=[entity_id],
+                context=context,
+            )
 
     async def resolve_entity_path(
         self,

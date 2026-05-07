@@ -1,10 +1,15 @@
 from abc import ABC
+from contextlib import asynccontextmanager
 from typing import Callable, Awaitable
 from pydantic.alias_generators import to_snake
 from sensorthings.types import EntityType
 
 
-class BaseBackendAdapter(ABC):
+class AbstractBaseBackendAdapter(ABC):
+
+    @asynccontextmanager
+    async def transaction(self):
+        yield
 
     def resolve_operation(
         self,
