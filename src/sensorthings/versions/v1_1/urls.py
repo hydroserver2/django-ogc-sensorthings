@@ -1,7 +1,9 @@
 from ninja import NinjaAPI
+from ninja.renderers import JSONRenderer
 from django.urls import path
 from django.apps import apps
 from sensorthings.versions.v1_1 import STA
+from sensorthings.versions.v1_1.conf import app_settings
 from sensorthings.versions.v1_1.views import (
     root_router_definition,
     thing_router_definition,
@@ -57,52 +59,9 @@ api = NinjaAPI(
     title="SensorThings API",
     version=STA.VERSION,
     urls_namespace="sensorthings_v1_1",
+    renderer=app_settings.RENDERER or JSONRenderer(),
 )
 """The main Django Ninja API instance for SensorThings version 1.1."""
-
-# for model in [
-#     ThingResponse,
-#     LocationResponse,
-#     HistoricalLocationResponse,
-#     SensorResponse,
-#     ObservedPropertyResponse,
-#     FeatureOfInterestResponse,
-#     DatastreamResponse,
-#     ObservationResponse,
-# ]:
-#     model.model_rebuild()
-#
-# for model in [
-#     ThingPostBody,
-#     LocationPostBody,
-#     HistoricalLocationPostBody,
-#     SensorPostBody,
-#     ObservedPropertyPostBody,
-#     FeatureOfInterestPostBody,
-#     DatastreamPostBody,
-#     ObservationPostBody,
-# ]:
-#     model.model_rebuild()
-#
-# for model in [
-#     ThingCollectionResponse,
-#     LocationCollectionResponse,
-#     HistoricalLocationCollectionResponse,
-#     SensorCollectionResponse,
-#     ObservedPropertyCollectionResponse,
-#     FeatureOfInterestCollectionResponse,
-#     DatastreamCollectionResponse,
-#     ObservationCollectionResponse,
-# ]:
-#     model.model_rebuild()
-
-# if apps.is_installed("sensorthings.v1_1.extensions.multidatastream"):
-#     for model in [
-#         MultiDatastreamResponse,
-#         MultiDatastreamPostBody,
-#         MultiDatastreamCollectionResponse,
-#     ]:
-#         model.model_rebuild()
 
 api.add_router("", root_router_definition.apply())
 

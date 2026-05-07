@@ -86,6 +86,9 @@ class AppSettings(BaseSettings):
 
     SETTINGS_PREFIX = "SENSORTHINGS_V1_1_"
 
+    RENDERER: Any = None
+    """Custom Django Ninja renderer instance (subclass of ninja.renderers.BaseRenderer)."""
+
     PROPERTIES_SCHEMAS: dict[str, Any] = field(default_factory=dict)
     """Custom schemas for entity property fields."""
 

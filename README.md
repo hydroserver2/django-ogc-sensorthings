@@ -75,6 +75,7 @@ Interactive API docs (Swagger UI) are served at `http://localhost:8000/sensorthi
 | `SENSORTHINGS_V1_1_ID_DELIMITER` | Delimiter wrapping IDs in URLs (e.g. `'` for `Things('id')`) |
 | `SENSORTHINGS_V1_1_ID_EXAMPLE` | Example ID value shown in Swagger UI (auto-detected from `ID_TYPE` if not set) |
 | `SENSORTHINGS_V1_1_MAX_TOP` | Maximum number of entities returned in a single collection response (default: `100`) |
+| `SENSORTHINGS_V1_1_RENDERER` | Custom Django Ninja renderer instance (subclass of `ninja.renderers.BaseRenderer`); defaults to `JSONRenderer` |
 | `SENSORTHINGS_V1_1_DEFAULT_AUTH_HANDLER` | See [Authentication and Authorization](#authentication-and-authorization) |
 | `SENSORTHINGS_V1_1_AUTH_HANDLERS` | See [Authentication and Authorization](#authentication-and-authorization) |
 | `SENSORTHINGS_V1_1_PROPERTIES_SCHEMAS` | See [Custom Properties Schemas](#custom-properties-schemas) |
