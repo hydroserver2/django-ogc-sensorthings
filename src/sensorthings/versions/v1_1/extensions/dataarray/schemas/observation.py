@@ -1,8 +1,8 @@
 from typing import Literal
 from ninja import Field
 from sensorthings.types import Absent
-from sensorthings.versions.v1_1 import sta
-from sensorthings.versions.v1_1.schemas import CollectionQuery, BaseSchema, BaseCollectionSchema
+from sensorthings.versions.v1_1 import STA
+from sensorthings.versions.v1_1.schemas import CollectionQuery, BaseSchema, BaseCollectionSchema, IdSchema
 
 
 class ObservationDataArrayCollectionQuery(CollectionQuery):
@@ -15,7 +15,7 @@ class ObservationDataArrayResponse(BaseSchema):
     """GET response schema representing `Observation` entities in a data array format."""
 
     datastream_link: str = Field(
-        alias="Datastream" + sta.NAVIGATION_LINK,
+        alias="Datastream" + STA.NAVIGATION_LINK,
     )
     components: list[str]
     data_array: list[list]
@@ -27,8 +27,9 @@ class ObservationDataArrayCollectionResponse(BaseCollectionSchema):
     value: list[ObservationDataArrayResponse]
 
 
-class ObservationDataArrayPostBody(BaseSchema):
-    """POST body schema for creating new `Observation` entities from a data array format."""
+class DataArrayPostGroup(BaseSchema):
+    """A single datastream group in a CreateObservations request body."""
 
+    datastream: IdSchema = Field(..., alias="Datastream")
     components: list[str]
-    data_array: list[list]
+    data_array: list[list] = Field(..., alias="dataArray")

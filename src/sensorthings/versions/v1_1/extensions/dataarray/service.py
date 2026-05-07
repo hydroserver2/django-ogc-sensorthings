@@ -4,7 +4,7 @@ from pydantic.alias_generators import to_camel, to_snake
 from django.http import HttpRequest
 from sensorthings.http import validate_select, build_self_link
 from sensorthings.types import EntityType
-from sensorthings.versions.v1_1 import sta, app_settings
+from sensorthings.versions.v1_1 import STA, app_settings
 
 
 class DataArrayServiceMixin:
@@ -77,7 +77,7 @@ class DataArrayServiceMixin:
                     "datastream_link": build_self_link(
                         entity_type_set_name="Datastreams",
                         iot_id=datastream_id,
-                        protocol=sta,
+                        protocol=STA,
                         settings=app_settings
                     ),
                     "components": components,
