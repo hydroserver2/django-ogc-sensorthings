@@ -1,5 +1,6 @@
 from .absent import Absent
 from .entity import EntityType
+from .query import OrderByField, OrderByDirection
 from .iso_string import (
     ISOTimeString,
     ISOIntervalString,

@@ -1,5 +1,4 @@
 from .base import EntityResultSetDTO, CollectionDTO, BaseEntityDTO
-from .query import QueryDTO, OrderByField, OrderByDirection
 from .thing import ThingDTO
 from .location import LocationDTO
 from .historical_location import HistoricalLocationDTO

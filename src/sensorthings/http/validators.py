@@ -2,9 +2,8 @@ from pydantic.alias_generators import to_snake
 from odata_query.exceptions import ODataException
 from odata_query.grammar import ODataParser, ODataLexer
 from odata_query.ast import _Node  # noqa
-from sensorthings.types import EntityType
+from sensorthings.types import EntityType, OrderByField, OrderByDirection
 from sensorthings.core import BaseProtocol
-from sensorthings.versions.v1_1.dto import OrderByField, OrderByDirection
 
 
 lexer = ODataLexer()
