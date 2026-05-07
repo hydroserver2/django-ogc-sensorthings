@@ -27,16 +27,12 @@ class DjangoBaseBackendAdapter:
     def build_entity_filter_arg(
         model: type[Model],
         filters: _Node | None = None,
-    ) -> dict:
-        """Translate an OData AST filter node into Django filter kwargs."""
-
-        query_filter = {}
-
+    ):
         if filters is not None:
             visitor = AstToDjangoQVisitor(model)
-            query_filter = visitor.visit(filters)
+            return visitor.visit(filters)
 
-        return query_filter
+        return None
 
     @staticmethod
     def build_orderby_arg(
@@ -100,10 +96,9 @@ class DjangoBaseBackendAdapter:
         use a standard groupby on the field value.
         """
 
-        manager = manager.filter(**self.build_entity_filter_arg(
-            model=manager.model,
-            filters=filters,
-        ))
+        q = self.build_entity_filter_arg(model=manager.model, filters=filters)
+        if q is not None:
+            manager = manager.filter(q)
 
         lower_page_index, upper_page_index = self.get_pagination_indices(top, skip)
 
