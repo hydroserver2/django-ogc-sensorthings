@@ -10,7 +10,7 @@ from sensorthings.http import (
     delete_entity_error_responses,
     http_error,
 )
-from sensorthings.versions.v1_1 import sta
+from sensorthings.versions.v1_1 import STA
 from sensorthings.versions.v1_1 import sensorthings_service
 from sensorthings.versions.v1_1.schemas import (
     CollectionQuery,
@@ -25,7 +25,7 @@ from ..schemas import (
 )
 
 router_definition = RouterDefinition(
-    router=Router(tags=[str(sta.MULTI_DATASTREAMS)]),
+    router=Router(tags=[str(STA.MULTI_DATASTREAMS)]),
     operations={}
 )
 
@@ -40,7 +40,7 @@ async def get_multi_datastream_collection(
 
     try:
         collection = await sensorthings_service.get_collection(
-            entity_type=sta.MULTI_DATASTREAM_ENTITY,
+            entity_type=STA.MULTI_DATASTREAM_ENTITY,
             filters=query.filters,
             count=query.count,
             orderby=query.orderby,
@@ -57,7 +57,7 @@ async def get_multi_datastream_collection(
 
 
 router_definition.operations["get_multi_datastream_collection"] = OperationDefinition(
-    path=str(sta.MULTI_DATASTREAMS),
+    path=str(STA.MULTI_DATASTREAMS),
     methods=["GET"],
     view_func=get_multi_datastream_collection,
     auth=app_settings.AUTH_HANDLERS.get(
@@ -78,7 +78,7 @@ async def create_multi_datastream_entity(
 
     try:
         entity = await sensorthings_service.create_entity(
-            entity_type=sta.MULTI_DATASTREAM_ENTITY,
+            entity_type=STA.MULTI_DATASTREAM_ENTITY,
             payload=payload,
             context=request
         )
@@ -90,7 +90,7 @@ async def create_multi_datastream_entity(
 
 
 router_definition.operations["create_multi_datastream_entity"] = OperationDefinition(
-    path=str(sta.MULTI_DATASTREAMS),
+    path=str(STA.MULTI_DATASTREAMS),
     methods=["POST"],
     view_func=create_multi_datastream_entity,
     auth=app_settings.AUTH_HANDLERS.get(
@@ -113,7 +113,7 @@ async def get_multi_datastream_entity(
 
     try:
         entity = await sensorthings_service.get_entity_type(
-            entity_type=sta.MULTI_DATASTREAM_ENTITY,
+            entity_type=STA.MULTI_DATASTREAM_ENTITY,
             entity_id=entity_id,
             select=query.select,
             expand=query.expand,
@@ -126,7 +126,7 @@ async def get_multi_datastream_entity(
 
 
 router_definition.operations["get_multi_datastream_entity"] = OperationDefinition(
-    path=f"{str(sta.MULTI_DATASTREAMS)}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
+    path=f"{str(STA.MULTI_DATASTREAMS)}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
     methods=["GET"],
     view_func=get_multi_datastream_entity,
     auth=app_settings.AUTH_HANDLERS.get(
@@ -158,7 +158,7 @@ async def update_multi_datastream_entity(
 
 
 router_definition.operations["update_multi_datastream_entity"] = OperationDefinition(
-    path=f"{str(sta.MULTI_DATASTREAMS)}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
+    path=f"{str(STA.MULTI_DATASTREAMS)}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
     methods=["PATCH"],
     view_func=update_multi_datastream_entity,
     auth=app_settings.AUTH_HANDLERS.get(
@@ -180,7 +180,7 @@ async def delete_multi_datastream_entity(
 
     try:
         await sensorthings_service.delete_entity(
-            entity_type=sta.MULTI_DATASTREAM_ENTITY,
+            entity_type=STA.MULTI_DATASTREAM_ENTITY,
             entity_id=entity_id,
             context=request
         )
@@ -191,7 +191,7 @@ async def delete_multi_datastream_entity(
 
 
 router_definition.operations["delete_multi_datastream_entity"] = OperationDefinition(
-    path=f"{str(sta.MULTI_DATASTREAMS)}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
+    path=f"{str(STA.MULTI_DATASTREAMS)}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
     methods=["DELETE"],
     view_func=delete_multi_datastream_entity,
     auth=app_settings.AUTH_HANDLERS.get(
