@@ -60,6 +60,8 @@ api = NinjaAPI(
     version=STA.VERSION,
     urls_namespace="sensorthings_v1_1",
     renderer=app_settings.RENDERER or JSONRenderer(),
+    docs_url="/docs" if app_settings.DOCS_ENABLED else None,
+    openapi_url="/openapi.json" if app_settings.DOCS_ENABLED else None,
 )
 """The main Django Ninja API instance for SensorThings version 1.1."""
 

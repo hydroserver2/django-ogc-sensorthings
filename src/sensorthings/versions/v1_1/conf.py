@@ -89,6 +89,9 @@ class AppSettings(BaseSettings):
     RENDERER: Any = None
     """Custom Django Ninja renderer instance (subclass of ninja.renderers.BaseRenderer)."""
 
+    DOCS_ENABLED: bool = True
+    """Whether to expose the Swagger UI and OpenAPI schema endpoints."""
+
     PROPERTIES_SCHEMAS: dict[str, Any] = field(default_factory=dict)
     """Custom schemas for entity property fields."""
 
