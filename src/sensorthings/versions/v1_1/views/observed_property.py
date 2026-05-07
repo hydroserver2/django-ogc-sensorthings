@@ -10,8 +10,7 @@ from sensorthings.http import (
     delete_entity_error_responses,
     http_error,
 )
-from sensorthings.versions.v1_1 import sta
-from sensorthings.versions.v1_1 import sensorthings_service
+from sensorthings.versions.v1_1 import STA, app_settings, sensorthings_service
 from sensorthings.versions.v1_1.schemas import (
     CollectionQuery,
     EntityQuery,
@@ -20,10 +19,10 @@ from sensorthings.versions.v1_1.schemas import (
     ObservedPropertyPostBody,
     ObservedPropertyPatchBody,
 )
-from sensorthings.versions.v1_1 import app_settings
+
 
 router_definition = RouterDefinition(
-    router=Router(tags=[str(sta.OBSERVED_PROPERTIES)]),
+    router=Router(tags=[str(STA.OBSERVED_PROPERTIES)]),
     operations={}
 )
 
@@ -38,7 +37,7 @@ async def get_observed_property_collection(
 
     try:
         resource = await sensorthings_service.get_collection(
-            entity_type=sta.OBSERVED_PROPERTY_ENTITY,
+            entity_type=STA.OBSERVED_PROPERTY_ENTITY,
             context=request,
             **query.dict(exclude_unset=True)
         )
@@ -49,7 +48,7 @@ async def get_observed_property_collection(
 
 
 router_definition.operations["get_observed_property_collection"] = OperationDefinition(
-    path=str(sta.OBSERVED_PROPERTIES),
+    path=str(STA.OBSERVED_PROPERTIES),
     methods=["GET"],
     view_func=get_observed_property_collection,
     auth=app_settings.AUTH_HANDLERS.get(
@@ -70,7 +69,7 @@ async def create_observed_property_entity(
 
     try:
         entity = await sensorthings_service.create_entity(
-            entity_type=sta.OBSERVED_PROPERTY_ENTITY,
+            entity_type=STA.OBSERVED_PROPERTY_ENTITY,
             payload=payload.dict(exclude_unset=True),
             context=request
         )
@@ -82,7 +81,7 @@ async def create_observed_property_entity(
 
 
 router_definition.operations["create_observed_property_entity"] = OperationDefinition(
-    path=str(sta.OBSERVED_PROPERTIES),
+    path=str(STA.OBSERVED_PROPERTIES),
     methods=["POST"],
     view_func=create_observed_property_entity,
     auth=app_settings.AUTH_HANDLERS.get(
@@ -105,7 +104,7 @@ async def get_observed_property_entity(
 
     try:
         entity = await sensorthings_service.get_entity(
-            entity_type=sta.OBSERVED_PROPERTY_ENTITY,
+            entity_type=STA.OBSERVED_PROPERTY_ENTITY,
             entity_id=entity_id,
             context=request,
             **query.dict(exclude_unset=True)
@@ -117,7 +116,7 @@ async def get_observed_property_entity(
 
 
 router_definition.operations["get_observed_property_entity"] = OperationDefinition(
-    path=f"{str(sta.OBSERVED_PROPERTIES)}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
+    path=f"{str(STA.OBSERVED_PROPERTIES)}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
     methods=["GET"],
     view_func=get_observed_property_entity,
     auth=app_settings.AUTH_HANDLERS.get(
@@ -140,7 +139,7 @@ async def update_observed_property_entity(
 
     try:
         await sensorthings_service.update_entity(
-            entity_type=sta.OBSERVED_PROPERTY_ENTITY,
+            entity_type=STA.OBSERVED_PROPERTY_ENTITY,
             entity_id=entity_id,
             payload=payload.dict(exclude_unset=True),
             context=request
@@ -152,7 +151,7 @@ async def update_observed_property_entity(
 
 
 router_definition.operations["update_observed_property_entity"] = OperationDefinition(
-    path=f"{str(sta.OBSERVED_PROPERTIES)}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
+    path=f"{str(STA.OBSERVED_PROPERTIES)}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
     methods=["PATCH"],
     view_func=update_observed_property_entity,
     auth=app_settings.AUTH_HANDLERS.get(
@@ -174,7 +173,7 @@ async def delete_observed_property_entity(
 
     try:
         await sensorthings_service.delete_entity(
-            entity_type=sta.OBSERVED_PROPERTY_ENTITY,
+            entity_type=STA.OBSERVED_PROPERTY_ENTITY,
             entity_id=entity_id,
             context=request
         )
@@ -185,7 +184,7 @@ async def delete_observed_property_entity(
 
 
 router_definition.operations["delete_observed_property_entity"] = OperationDefinition(
-    path=f"{str(sta.OBSERVED_PROPERTIES)}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
+    path=f"{str(STA.OBSERVED_PROPERTIES)}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
     methods=["DELETE"],
     view_func=delete_observed_property_entity,
     auth=app_settings.AUTH_HANDLERS.get(

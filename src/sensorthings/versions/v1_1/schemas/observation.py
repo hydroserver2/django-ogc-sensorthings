@@ -7,7 +7,7 @@ from sensorthings.types import (
     example_iso_time_string,
     example_iso_interval_string,
 )
-from sensorthings.versions.v1_1 import app_settings
+from sensorthings.versions.v1_1 import STA, app_settings
 from .base import BaseSchema
 
 
@@ -23,4 +23,4 @@ class ObservationFields(BaseSchema):
     valid_time: ISOIntervalString | None = Field(
         None, examples=[example_iso_interval_string]
     )
-    parameters: dict = Absent
+    parameters: app_settings.PROPERTIES_SCHEMAS.get(str(STA.OBSERVATIONS), dict) = Absent

@@ -10,8 +10,7 @@ from sensorthings.http import (
     delete_entity_error_responses,
     http_error,
 )
-from sensorthings.versions.v1_1 import sta
-from sensorthings.versions.v1_1 import sensorthings_service
+from sensorthings.versions.v1_1 import STA, app_settings, sensorthings_service
 from sensorthings.versions.v1_1.schemas import (
     CollectionQuery,
     EntityQuery,
@@ -20,10 +19,10 @@ from sensorthings.versions.v1_1.schemas import (
     SensorPostBody,
     SensorPatchBody,
 )
-from sensorthings.versions.v1_1 import app_settings
+
 
 router_definition = RouterDefinition(
-    router=Router(tags=[str(sta.SENSORS)]),
+    router=Router(tags=[str(STA.SENSORS)]),
     operations={}
 )
 
@@ -38,7 +37,7 @@ async def get_sensor_collection(
 
     try:
         collection = await sensorthings_service.get_collection(
-            entity_type=sta.SENSOR_ENTITY,
+            entity_type=STA.SENSOR_ENTITY,
             context=request,
             **query.dict(exclude_unset=True)
         )
@@ -49,7 +48,7 @@ async def get_sensor_collection(
 
 
 router_definition.operations["get_sensor_collection"] = OperationDefinition(
-    path=str(sta.SENSORS),
+    path=str(STA.SENSORS),
     methods=["GET"],
     view_func=get_sensor_collection,
     auth=app_settings.AUTH_HANDLERS.get(
@@ -70,7 +69,7 @@ async def create_sensor_entity(
 
     try:
         entity = await sensorthings_service.create_entity(
-            entity_type=sta.SENSOR_ENTITY,
+            entity_type=STA.SENSOR_ENTITY,
             payload=payload.dict(exclude_unset=True),
             context=request
         )
@@ -82,7 +81,7 @@ async def create_sensor_entity(
 
 
 router_definition.operations["create_sensor_entity"] = OperationDefinition(
-    path=str(sta.SENSORS),
+    path=str(STA.SENSORS),
     methods=["POST"],
     view_func=create_sensor_entity,
     auth=app_settings.AUTH_HANDLERS.get(
@@ -105,7 +104,7 @@ async def get_sensor_entity(
 
     try:
         entity = await sensorthings_service.get_entity(
-            entity_type=sta.SENSOR_ENTITY,
+            entity_type=STA.SENSOR_ENTITY,
             entity_id=entity_id,
             context=request,
             **query.dict(exclude_unset=True)
@@ -117,7 +116,7 @@ async def get_sensor_entity(
 
 
 router_definition.operations["get_sensor_entity"] = OperationDefinition(
-    path=f"{str(sta.SENSORS)}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
+    path=f"{str(STA.SENSORS)}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
     methods=["GET"],
     view_func=get_sensor_entity,
     auth=app_settings.AUTH_HANDLERS.get(
@@ -140,7 +139,7 @@ async def update_sensor_entity(
 
     try:
         await sensorthings_service.update_entity(
-            entity_type=sta.SENSOR_ENTITY,
+            entity_type=STA.SENSOR_ENTITY,
             entity_id=entity_id,
             payload=payload.dict(exclude_unset=True),
             context=request
@@ -152,7 +151,7 @@ async def update_sensor_entity(
 
 
 router_definition.operations["update_sensor_entity"] = OperationDefinition(
-    path=f"{str(sta.SENSORS)}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
+    path=f"{str(STA.SENSORS)}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
     methods=["PATCH"],
     view_func=update_sensor_entity,
     auth=app_settings.AUTH_HANDLERS.get(
@@ -174,7 +173,7 @@ async def delete_sensor_entity(
 
     try:
         await sensorthings_service.delete_entity(
-            entity_type=sta.SENSOR_ENTITY,
+            entity_type=STA.SENSOR_ENTITY,
             entity_id=entity_id,
             context=request
         )
@@ -185,7 +184,7 @@ async def delete_sensor_entity(
 
 
 router_definition.operations["delete_sensor_entity"] = OperationDefinition(
-    path=f"{str(sta.SENSORS)}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
+    path=f"{str(STA.SENSORS)}({app_settings.ID_DELIMITER}{{entity_id}}{app_settings.ID_DELIMITER})",
     methods=["DELETE"],
     view_func=delete_sensor_entity,
     auth=app_settings.AUTH_HANDLERS.get(

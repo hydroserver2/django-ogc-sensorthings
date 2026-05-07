@@ -1,7 +1,7 @@
 from ninja import NinjaAPI
 from django.urls import path
 from django.apps import apps
-from sensorthings.versions.v1_1 import sta
+from sensorthings.versions.v1_1 import STA
 from sensorthings.versions.v1_1.views import (
     root_router_definition,
     thing_router_definition,
@@ -55,7 +55,7 @@ if apps.is_installed("sensorthings.v1_1.extensions.multidatastream"):
 
 api = NinjaAPI(
     title="SensorThings API",
-    version=sta.VERSION,
+    version=STA.VERSION,
     urls_namespace="sensorthings_v1_1",
 )
 """The main Django Ninja API instance for SensorThings version 1.1."""
@@ -124,4 +124,4 @@ api.add_router("", feature_of_interest_router_definition.apply())
 api.add_router("", resolver_router_definition.apply())
 api.add_router("", batch_router_definition.apply())
 
-urlpatterns = [path(f"{sta.VERSION}/", api.urls)]
+urlpatterns = [path(f"{STA.VERSION}/", api.urls)]

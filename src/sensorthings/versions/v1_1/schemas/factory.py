@@ -3,8 +3,7 @@ from ninja import Field
 from pydantic.alias_generators import to_snake
 from sensorthings.types import Absent, EntityType
 from sensorthings.http import build_self_link, build_nav_link, build_next_link
-from sensorthings.versions.v1_1 import sta
-from sensorthings.versions.v1_1 import app_settings
+from sensorthings.versions.v1_1 import STA, app_settings
 from .base import IdSchema, BaseSchema, BaseEntitySchema, PartialMetaclass, BaseCollectionSchema
 
 
@@ -70,13 +69,13 @@ class SchemaFactory:
                 entity_type_set_name=entity_type.set_name,
                 iot_id=app_settings.ID_EXAMPLE,
                 related_entity_type_name=related_entity_type_name,
-                protocol=sta,
+                protocol=STA,
                 settings=app_settings
             )
             namespace["__annotations__"][f"{property_name}_link"] = str
             namespace[f"{property_name}_link"] = Field(
                 Absent,
-                alias=related_entity_type_name + sta.NAVIGATION_LINK,
+                alias=related_entity_type_name + STA.NAVIGATION_LINK,
                 examples=[nav_link]
             )
             # TODO: https://github.com/swagger-api/swagger-ui/issues/10583
@@ -88,28 +87,28 @@ class SchemaFactory:
 
         for related_entity_type_set_name in entity_type.related_entity_type_set_names:
             property_name = to_snake(related_entity_type_set_name)
-            related_entity_type = sta.get_entity_type(related_entity_type_set_name)
+            related_entity_type = STA.get_entity_type(related_entity_type_set_name)
             nav_link = build_nav_link(
                 entity_type_set_name=entity_type.set_name,
                 iot_id=app_settings.ID_EXAMPLE,
                 related_entity_type_name=related_entity_type_set_name,
-                protocol=sta,
+                protocol=STA,
                 settings=app_settings
             )
             namespace["__annotations__"][f"{property_name}_link"] = str
             namespace[f"{property_name}_link"] = Field(
                 Absent,
-                alias=related_entity_type_set_name + sta.NAVIGATION_LINK,
+                alias=related_entity_type_set_name + STA.NAVIGATION_LINK,
                 examples=[nav_link]
             )
             namespace["__annotations__"][f"{property_name}_count"] = int
-            namespace[f"{property_name}_count"] = Field(Absent, alias=related_entity_type_set_name + sta.COUNT)
+            namespace[f"{property_name}_count"] = Field(Absent, alias=related_entity_type_set_name + STA.COUNT)
             namespace["__annotations__"][property_name] = list[f"{related_entity_type.name}Response"]
             namespace[property_name] = Field(Absent, alias=related_entity_type_set_name)
             namespace["__annotations__"][f"{property_name}_next_link"] = str
             namespace[f"{property_name}_next_link"] = Field(
                 Absent,
-                alias=related_entity_type_set_name + sta.NEXT_LINK,
+                alias=related_entity_type_set_name + STA.NEXT_LINK,
                 examples=[build_next_link(nav_link=nav_link, query_params={})]
             )
 
@@ -122,7 +121,7 @@ class SchemaFactory:
             "example": build_self_link(
                 entity_type_set_name=entity_type.set_name,
                 iot_id=app_settings.ID_EXAMPLE,
-                protocol=sta,
+                protocol=STA,
                 settings=app_settings
             )
         }
@@ -163,7 +162,7 @@ class SchemaFactory:
         self_link = build_self_link(
             entity_type_set_name=entity_type.set_name,
             iot_id=app_settings.ID_EXAMPLE,
-            protocol=sta,
+            protocol=STA,
             settings=app_settings
         )
         collection_schema.model_fields["iot_next_link"].json_schema_extra = {
@@ -214,14 +213,14 @@ class SchemaFactory:
             if exclude and related_entity_type_name in exclude:
                 continue
             property_name = to_snake(related_entity_type_name)
-            related_entity_type = sta.get_entity_type(related_entity_type_name)
+            related_entity_type = STA.get_entity_type(related_entity_type_name)
             nested_post_body = self.build_post_body(related_entity_type)
             namespace["__annotations__"][property_name] = Union[IdSchema, nested_post_body]
             namespace[property_name] = Field(..., alias=related_entity_type_name)
 
         for related_entity_type_set_name in entity_type.related_entity_type_set_names:
             property_name = to_snake(related_entity_type_set_name)
-            related_entity_type = sta.get_entity_type(related_entity_type_set_name)
+            related_entity_type = STA.get_entity_type(related_entity_type_set_name)
             nested_ref = f"{entity_type.name}{related_entity_type.name}PostBody"
             namespace["__annotations__"][property_name] = list[Union[IdSchema, nested_ref]]
             namespace[property_name] = Field(Absent, alias=related_entity_type.set_name)

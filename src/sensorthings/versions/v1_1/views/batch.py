@@ -3,6 +3,7 @@ from django.http import HttpRequest, HttpResponse, JsonResponse
 from email import message_from_bytes
 from email.policy import default as default_policy
 from sensorthings.http import RouterDefinition, OperationDefinition
+from sensorthings.versions.v1_1 import app_settings
 
 router_definition = RouterDefinition(
     router=Router(),
@@ -33,5 +34,8 @@ router_definition.operations["process_batch"] = OperationDefinition(
     path="$batch",
     methods=["POST"],
     view_func=process_batch,
+    auth=app_settings.AUTH_HANDLERS.get(
+        "process_batch", app_settings.DEFAULT_AUTH_HANDLER
+    ),
     include_in_schema=False
 )

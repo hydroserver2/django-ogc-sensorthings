@@ -22,6 +22,3 @@ class STA(BaseProtocol):
     NAVIGATION_LINK = "@iot.navigationLink"
 
     entity_types: dict[str, EntityType] = {}
-
-
-sta = STA()

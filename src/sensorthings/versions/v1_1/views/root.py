@@ -1,6 +1,6 @@
 from ninja import Router
 from sensorthings.http import RouterDefinition, OperationDefinition
-from sensorthings.versions.v1_1 import sta, app_settings, sensorthings_service
+from sensorthings.versions.v1_1 import STA, app_settings, sensorthings_service
 from sensorthings.versions.v1_1.schemas import ServiceRootSchema
 
 router_definition = RouterDefinition(
@@ -22,10 +22,10 @@ async def get_root(request) -> dict:
     value = [
         {
             "name": entity_type.set_name,
-            "url": f"{app_settings.SERVICE_URL}/{sta.VERSION}/{entity_type.set_name}",
+            "url": f"{app_settings.SERVICE_URL}/{STA.VERSION}/{entity_type.set_name}",
         }
         for entity_type in {
-            entity_type.set_name: entity_type for entity_type in sta.entity_types.values()
+            entity_type.set_name: entity_type for entity_type in STA.entity_types.values()
         }.values()
     ]
 
@@ -39,6 +39,7 @@ router_definition.operations["get_root"] = OperationDefinition(
     path="",
     methods=["GET"],
     view_func=get_root,
+    auth=app_settings.DEFAULT_AUTH_HANDLER,
     response={
         200: ServiceRootSchema
     },
