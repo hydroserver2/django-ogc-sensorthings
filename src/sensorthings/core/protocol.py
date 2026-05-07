@@ -46,6 +46,7 @@ class BaseProtocol(ABC):
             set_name=base.set_name,
             primitive_properties=base.primitive_properties,
             complex_properties=base.complex_properties,
+            optional_properties=base.optional_properties,
             related_entity_type_names=sorted(
                 set(base.related_entity_type_names)
                 | set(related_entity_type_names or [])
@@ -54,6 +55,7 @@ class BaseProtocol(ABC):
                 set(base.related_entity_type_set_names)
                 | set(related_entity_type_set_names or [])
             ),
+            dto_class=base.dto_class,
         )
 
         cls.register_entity(entity_type)

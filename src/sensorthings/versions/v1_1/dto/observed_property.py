@@ -10,4 +10,4 @@ class ObservedPropertyDTO(BaseEntityDTO):
     name: str = Absent
     definition: str = Absent
     description: str = Absent
-    properties: app_settings.PROPERTIES_SCHEMAS.get("ObservedProperty", Dict) = Absent
+    properties: app_settings.PROPERTIES_SCHEMAS.get("ObservedProperties", Dict) = Absent

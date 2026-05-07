@@ -12,7 +12,7 @@ class DatastreamDTO(BaseEntityDTO):
     description: str = Absent
     unit_of_measurement: dict = Absent
     observation_type: app_settings.OBSERVATION_TYPE_VALUE_LITERAL = Absent
-    properties: app_settings.PROPERTIES_SCHEMAS.get("Datastream", Dict) = Absent
+    properties: app_settings.PROPERTIES_SCHEMAS.get("Datastreams", Dict) = Absent
     observed_area: Dict = Absent
     phenomenon_time: ISOIntervalString = Absent
     result_time: ISOIntervalString = Absent

@@ -11,4 +11,4 @@ class SensorDTO(BaseEntityDTO):
     description: str = Absent
     encoding_type: app_settings.SENSOR_METADATA_ENCODING_TYPE_VALUE_LITERAL = Absent
     metadata: app_settings.SENSOR_METADATA_ENCODING_TYPE_SCHEMA = Absent
-    properties: app_settings.PROPERTIES_SCHEMAS.get("Sensor", Dict) = Absent
+    properties: app_settings.PROPERTIES_SCHEMAS.get("Sensors", Dict) = Absent

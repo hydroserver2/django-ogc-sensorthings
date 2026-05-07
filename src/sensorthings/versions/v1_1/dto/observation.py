@@ -13,7 +13,7 @@ class ObservationDTO(BaseEntityDTO):
     result_time: ISOTimeString = Absent
     result_quality: dict = Absent
     valid_time: ISOIntervalString = Absent
-    parameters: app_settings.PROPERTIES_SCHEMAS.get("Observation", Dict) = Absent
+    parameters: app_settings.PROPERTIES_SCHEMAS.get("Observations", Dict) = Absent
 
     datastream_id: app_settings.ID_TYPE = Absent
     feature_of_interest_id: app_settings.ID_TYPE = Absent

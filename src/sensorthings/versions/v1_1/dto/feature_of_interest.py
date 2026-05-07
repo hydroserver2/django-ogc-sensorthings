@@ -11,4 +11,4 @@ class FeatureOfInterestDTO(BaseEntityDTO):
     description: str = Absent
     encoding_type: app_settings.FEATURE_OF_INTEREST_ENCODING_TYPE_VALUE_LITERAL = Absent
     feature: app_settings.FEATURE_OF_INTEREST_ENCODING_TYPE_SCHEMA = Absent
-    properties: app_settings.PROPERTIES_SCHEMAS.get("Location", Dict) = Absent
+    properties: app_settings.PROPERTIES_SCHEMAS.get("FeaturesOfInterest", Dict) = Absent
