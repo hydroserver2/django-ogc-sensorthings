@@ -1,0 +1,44 @@
+name: Bug Report
+description: Create a report to help us improve Django OGC SensorThings
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Before You Start...**
+
+        Try to search for your issue — it may have already been answered or even fixed in the development branch.
+  - type: textarea
+    id: versions
+    attributes:
+      label: Environment
+      description: "Run `python -m django --version`, `python --version`, and `pip show django-ogc-sensorthings`."
+      placeholder: |
+        - django-ogc-sensorthings version:
+        - Django version:
+        - Python version:
+    validations:
+      required: true
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to Reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Actual Behavior
+      description: Include any error messages or tracebacks.
+    validations:
+      required: true
+  - type: textarea
+    id: additional-comments
+    attributes:
+      label: Additional Comments
+      description: e.g. relevant settings, backend adapter in use, or other context.
