@@ -2,6 +2,17 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, ClassVar
 from uuid import UUID
 from django.conf import settings as django_settings
+from django.utils.module_loading import import_string
+
+
+def resolve_import_strings(value: Any) -> Any:
+    if isinstance(value, str):
+        return import_string(value)
+    if isinstance(value, list):
+        return [resolve_import_strings(v) for v in value]
+    if isinstance(value, dict):
+        return {k: resolve_import_strings(v) for k, v in value.items()}
+    return value
 
 
 @dataclass(frozen=True)
@@ -30,13 +41,18 @@ class BaseSettings:
     """The maximum length of a collection response returned by the service."""
 
     AUTH_HANDLERS: dict[str, Callable] = field(default_factory=dict)
-    """Custom authentication handlers for HTTP endpoints."""
+    """Custom authentication handlers for HTTP endpoints. Values may be dotted import strings."""
 
     DEFAULT_AUTH_HANDLER: list[Callable] | None = None
-    """Default authentication handler for HTTP endpoints."""
+    """Default authentication handler for HTTP endpoints. May be a dotted import string or list of them."""
 
     BACKEND_ADAPTER: str | None = None
     """The backend adapter this service is connected to."""
+
+    IMPORT_STRING_SETTINGS: ClassVar[frozenset[str]] = frozenset({
+        "DEFAULT_AUTH_HANDLER",
+        "AUTH_HANDLERS",
+    })
 
     def __post_init__(self):
         id_examples: dict[type, str] = {
@@ -53,12 +69,15 @@ class BaseSettings:
             )
 
     def __getattribute__(self, name: str) -> Any:
-        if name in ("__dict__", "__class__", "SETTINGS_PREFIX"):
+        if name in ("__dict__", "__class__", "SETTINGS_PREFIX", "IMPORT_STRING_SETTINGS"):
             return super().__getattribute__(name)
 
         prefixed_name = f"{self.SETTINGS_PREFIX}{name}"
 
         if hasattr(django_settings, prefixed_name):
-            return getattr(django_settings, prefixed_name)
+            value = getattr(django_settings, prefixed_name)
+            if name in type(self).IMPORT_STRING_SETTINGS:
+                return resolve_import_strings(value)
+            return value
 
         return super().__getattribute__(name)
