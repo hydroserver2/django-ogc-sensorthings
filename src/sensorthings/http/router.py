@@ -1,5 +1,7 @@
+import asyncio
 from typing import Any, Callable, Optional
 from dataclasses import dataclass
+from asgiref.sync import sync_to_async
 from ninja import Router
 
 
@@ -21,6 +23,16 @@ class RouterDefinition:
     router: Router
     operations: dict[str, OperationDefinition]
 
+    @staticmethod
+    def _auth_sync_to_async(auth):
+        if auth is None:
+            return None
+        if isinstance(auth, list):
+            return [RouterDefinition._auth_sync_to_async(h) for h in auth]
+        if asyncio.iscoroutinefunction(auth):
+            return auth
+        return sync_to_async(auth)
+
     def apply(self) -> Router:
         """
         Register all API operations on the router.
@@ -31,7 +43,7 @@ class RouterDefinition:
                 path=operation.path,
                 methods=operation.methods,
                 view_func=operation.view_func,
-                auth=operation.auth,
+                auth=self._auth_sync_to_async(operation.auth),
                 response=operation.response,
                 by_alias=operation.by_alias,
                 exclude_none=operation.exclude_none,
