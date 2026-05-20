@@ -101,6 +101,16 @@ class BearerAuth(HttpBearer):
 SENSORTHINGS_V1_1_DEFAULT_AUTH_HANDLER = [BearerAuth()]
 ```
 
+If your auth handler is defined in a module that imports Django models, use a dotted Python path to avoid `AppRegistryNotReady` errors at settings load time:
+
+```python
+SENSORTHINGS_V1_1_DEFAULT_AUTH_HANDLER = [
+    "myapp.auth.BearerAuth",
+]
+```
+
+Sync auth handlers are automatically wrapped with `sync_to_async`, so they can safely perform ORM operations (session lookup, API key validation) from within async views.
+
 To require different auth on specific operations — for example, public reads with authenticated writes — use `AUTH_HANDLERS` with the operation name as the key:
 
 ```python
@@ -310,7 +320,12 @@ The valid keys, one per entity type, are:
 
 Any entity not listed in the dict keeps its default `dict` type.
 
-> **Note:** `PROPERTIES_SCHEMAS` values are compiled into the API schemas at app load time. The assigned value must be present in Django settings before app startup — it cannot be changed at runtime.
+> **Note:** `PROPERTIES_SCHEMAS` values are compiled into the API schemas at app load time and cannot be changed at runtime. If the schema class is defined in a module that imports Django models, use a dotted Python path to defer the import until after app startup:
+> ```python
+> SENSORTHINGS_V1_1_PROPERTIES_SCHEMAS = {
+>     "Things": "myapp.schemas.ThingProperties",
+> }
+> ```
 
 ## Customizing Field Types
 
@@ -362,7 +377,7 @@ SENSORTHINGS_V1_1_FEATURE_OF_INTEREST_ENCODING_TYPE_SCHEMA = GeoJSONFeature
 SENSORTHINGS_V1_1_FEATURE_OF_INTEREST_ENCODING_TYPE_VALUE_LITERAL = Literal["application/geo+json"]
 ```
 
-> **Note:** Like `PROPERTIES_SCHEMAS`, these values must be present in Django settings before app startup and cannot be changed at runtime.
+> **Note:** Like `PROPERTIES_SCHEMAS`, these values cannot be changed at runtime. Dotted Python paths are supported for any of these settings when the referenced type is defined in a module that imports Django models.
 
 ## Extensions
 
