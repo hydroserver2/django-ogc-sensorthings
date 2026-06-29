@@ -42,7 +42,7 @@ def validate_iso_interval(value: str) -> str:
     Validate and normalize an ISO 8601 time interval string.
 
     The interval must be in the format "<start>/<end>", where each
-    endpoint is a valid ISO 8601 timestamp, and the start precedes the end.
+    endpoint is a valid ISO 8601 timestamp, and the start does not exceed the end.
     """
 
     if not isinstance(value, str):
@@ -51,7 +51,7 @@ def validate_iso_interval(value: str) -> str:
     split_value = [validate_iso_time(dt_value) for dt_value in value.split("/")]
 
     try:
-        if len(split_value) != 2 or isoparse(split_value[0]) >= isoparse(
+        if len(split_value) != 2 or isoparse(split_value[0]) > isoparse(
             split_value[1]
         ):
             raise TypeError
