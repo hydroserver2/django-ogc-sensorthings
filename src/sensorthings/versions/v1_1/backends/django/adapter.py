@@ -3,6 +3,7 @@ from itertools import groupby
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from asgiref.sync import sync_to_async
+from datetime import datetime, timezone
 from odata_query.ast import _Node  # noqa
 from odata_query.django.django_q import AstToDjangoQVisitor
 from django.http import HttpRequest
@@ -939,6 +940,30 @@ class DjangoBackendAdapter(
             entities=entities
         )
 
+    @staticmethod
+    def resolve_feature_of_interest_for_datastream(datastream_id) -> app_settings.ID_TYPE | None:
+        """Get or create a FeatureOfInterest from the Thing's current GeoJSON Location."""
+
+        location = (
+            Location.objects
+            .filter(things__datastreams__id=datastream_id, encoding_type=FeatureOfInterest.GEOJSON)
+            .first()
+        )
+
+        if location is None:
+            return None
+
+        feature_of_interest, _ = FeatureOfInterest.objects.get_or_create(
+            feature=location.location,
+            defaults={
+                "name": location.name,
+                "description": location.description,
+                "encoding_type": location.encoding_type,
+            }
+        )
+
+        return feature_of_interest.pk
+
     def create_observations(
         self,
         payload: list[ObservationDTO],
@@ -946,25 +971,36 @@ class DjangoBackendAdapter(
     ) -> list[app_settings.ID_TYPE]:
         """Persist new Observation instances and return their primary keys."""
 
-        observations = [
-            Observation(
-                phenomenon_time_begin=dto.phenomenon_time,
+        now = datetime.now(timezone.utc)
+
+        feature_of_interest_cache: dict = {}
+        for dto in payload:
+            if dto.feature_of_interest_id is Absent and dto.datastream_id not in feature_of_interest_cache:
+                feature_of_interest_cache[dto.datastream_id] = self.resolve_feature_of_interest_for_datastream(
+                    dto.datastream_id
+                )
+
+        observations = []
+
+        for dto in payload:
+            phenomenon_time = dto.phenomenon_time if dto.phenomenon_time is not Absent else now
+            observations.append(Observation(
+                phenomenon_time_begin=phenomenon_time,
                 result=dto.result,
-                result_time=dto.result_time,
+                result_time=dto.result_time if dto.result_time is not Absent else phenomenon_time,
                 result_quality=dto.result_quality if dto.result_quality is not Absent else None,
                 valid_time_begin=dto.valid_time if dto.valid_time is not Absent else None,
                 parameters=dto.parameters if dto.parameters is not Absent else None,
                 datastream_id=dto.datastream_id,
-                feature_of_interest_id=dto.feature_of_interest_id,
-            )
-            for dto in payload
-        ]
+                feature_of_interest_id=(
+                    dto.feature_of_interest_id if dto.feature_of_interest_id is not Absent
+                    else feature_of_interest_cache.get(dto.datastream_id)
+                ),
+            ))
 
         Observation.objects.bulk_create(observations)
 
-        return [
-            observation.pk for observation in observations
-        ]
+        return [observation.pk for observation in observations]
 
     def update_observations(
         self,

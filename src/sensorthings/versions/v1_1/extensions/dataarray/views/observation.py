@@ -67,26 +67,10 @@ async def create_observation_entities(
     Create Observation entities in bulk using the dataArray format.
     """
 
-    results = []
-
-    for item in payload:
-        for row in item.data_array:
-            obs_payload = {}
-            for component, value in zip(item.components, row):
-                if component == "FeatureOfInterest/id":
-                    obs_payload["feature_of_interest"] = {"id": value}
-                else:
-                    obs_payload[component] = value
-            obs_payload["datastream"] = {"id": item.datastream.id}
-            try:
-                entity = await sensorthings_service.create_entity(
-                    entity_type=STA.OBSERVATION_ENTITY,
-                    payload=obs_payload,
-                    context=request
-                )
-                results.append(entity["iot_self_link"])
-            except Exception:
-                results.append("error")
+    try:
+        results = await sensorthings_service.create_observation_entities(payload, request)
+    except Exception as e:
+        raise http_error(e)
 
     return 201, results
 

@@ -1,5 +1,11 @@
 import pytest
-from tests.factories.v1_1.django import create_test_datastream, create_test_observation
+from sensorthings.versions.v1_1.backends.django.models import FeatureOfInterest, Observation
+from tests.factories.v1_1.django import (
+    create_test_datastream,
+    create_test_feature_of_interest,
+    create_test_location,
+    create_test_observation,
+)
 
 
 pytestmark = pytest.mark.django_db
@@ -52,3 +58,111 @@ class TestDataArrayNestedPath:
         body = response.json()
         assert len(body["value"]) == 1
         assert f"{datastream.id}" in body["value"][0]["Datastream@iot.navigationLink"]
+
+
+class TestCreateObservations:
+
+    T1 = "2025-01-01T00:00:00Z"
+    T2 = "2025-01-02T00:00:00Z"
+    T3 = "2025-01-03T00:00:00Z"
+
+    def _group(self, ds, rows, components=None):
+        if components is None:
+            components = ["phenomenonTime", "result", "resultTime", "FeatureOfInterest/id"]
+        return {
+            "Datastream": {"@iot.id": str(ds.id)},
+            "components": components,
+            "dataArray": rows,
+        }
+
+    def test_returns_201(self, client):
+        ds = create_test_datastream()
+        foi = create_test_feature_of_interest()
+        response = client.post("/CreateObservations", [self._group(ds, [[self.T1, 1.0, self.T1, str(foi.id)]])])
+        assert response.status_code == 201
+
+    def test_response_is_list_of_self_links(self, client):
+        ds = create_test_datastream()
+        foi = create_test_feature_of_interest()
+        response = client.post("/CreateObservations", [self._group(ds, [[self.T1, 1.0, self.T1, str(foi.id)]])])
+        body = response.json()
+        assert isinstance(body, list)
+        assert len(body) == 1
+        assert "Observations" in body[0]
+
+    def test_observations_persisted_in_db(self, client):
+        ds = create_test_datastream()
+        foi = create_test_feature_of_interest()
+        before = Observation.objects.count()
+        client.post("/CreateObservations", [self._group(ds, [[self.T1, 1.0, self.T1, str(foi.id)]])])
+        assert Observation.objects.count() == before + 1
+
+    def test_multiple_rows_in_one_group(self, client):
+        ds = create_test_datastream()
+        foi = create_test_feature_of_interest()
+        rows = [
+            [self.T1, 1.0, self.T1, str(foi.id)],
+            [self.T2, 2.0, self.T2, str(foi.id)],
+            [self.T3, 3.0, self.T3, str(foi.id)],
+        ]
+        before = Observation.objects.count()
+        response = client.post("/CreateObservations", [self._group(ds, rows)])
+        assert response.status_code == 201
+        assert len(response.json()) == 3
+        assert Observation.objects.count() == before + 3
+
+    def test_multiple_datastream_groups(self, client):
+        ds_a = create_test_datastream()
+        ds_b = create_test_datastream()
+        foi = create_test_feature_of_interest()
+        before = Observation.objects.count()
+        payload = [
+            self._group(ds_a, [[self.T1, 1.0, self.T1, str(foi.id)]]),
+            self._group(ds_b, [[self.T1, 2.0, self.T1, str(foi.id)]]),
+        ]
+        response = client.post("/CreateObservations", payload)
+        assert response.status_code == 201
+        assert len(response.json()) == 2
+        assert Observation.objects.count() == before + 2
+
+    def test_foi_auto_resolved_from_thing_location(self, client):
+        ds = create_test_datastream()
+        create_test_location(things=[ds.thing])
+        before_foi = FeatureOfInterest.objects.count()
+        before_obs = Observation.objects.count()
+        response = client.post("/CreateObservations", [
+            self._group(ds, [[self.T1, 1.0, self.T1]], components=["phenomenonTime", "result", "resultTime"])
+        ])
+        assert response.status_code == 201
+        assert Observation.objects.count() == before_obs + 1
+        assert FeatureOfInterest.objects.count() == before_foi + 1
+
+    def test_foi_reused_for_multiple_rows_on_same_datastream(self, client):
+        ds = create_test_datastream()
+        create_test_location(things=[ds.thing])
+        before_foi = FeatureOfInterest.objects.count()
+        rows = [
+            [self.T1, 1.0, self.T1],
+            [self.T2, 2.0, self.T2],
+        ]
+        client.post("/CreateObservations", [
+            self._group(ds, rows, components=["phenomenonTime", "result", "resultTime"])
+        ])
+        assert FeatureOfInterest.objects.count() == before_foi + 1
+
+    def test_phenomenon_time_defaults_to_server_time(self, client):
+        ds = create_test_datastream()
+        foi = create_test_feature_of_interest()
+        before = Observation.objects.count()
+        response = client.post("/CreateObservations", [
+            self._group(ds, [[1.0, str(foi.id)]], components=["result", "FeatureOfInterest/id"])
+        ])
+        assert response.status_code == 201
+        assert Observation.objects.count() == before + 1
+
+    def test_row_length_mismatch_returns_422(self, client):
+        ds = create_test_datastream()
+        response = client.post("/CreateObservations", [
+            self._group(ds, [[self.T1, 1.0]], components=["phenomenonTime", "result", "resultTime"])
+        ])
+        assert response.status_code == 422

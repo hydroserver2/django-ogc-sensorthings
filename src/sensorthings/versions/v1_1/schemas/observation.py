@@ -14,11 +14,11 @@ from .base import BaseSchema
 class ObservationFields(BaseSchema):
     """Base schema for `Observation` entity fields."""
 
-    phenomenon_time: Union[ISOTimeString, ISOIntervalString] = Field(
-        ..., examples=[example_iso_time_string, example_iso_interval_string]
+    phenomenon_time: Union[ISOTimeString, ISOIntervalString, None] = Field(
+        None, examples=[example_iso_time_string, example_iso_interval_string]
     )
     result: app_settings.OBSERVATION_TYPE_SCHEMA
-    result_time: ISOTimeString = Field(..., examples=[example_iso_time_string])
+    result_time: ISOTimeString | None = Field(None, examples=[example_iso_time_string])
     result_quality: dict | None = None
     valid_time: ISOIntervalString | None = Field(
         None, examples=[example_iso_interval_string]
