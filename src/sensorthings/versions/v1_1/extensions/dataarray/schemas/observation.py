@@ -1,5 +1,6 @@
 from typing import Literal
 from ninja import Field
+from pydantic import model_validator
 from sensorthings.types import Absent
 from sensorthings.versions.v1_1 import STA
 from sensorthings.versions.v1_1.schemas import CollectionQuery, BaseSchema, BaseCollectionSchema, IdSchema
@@ -33,3 +34,13 @@ class DataArrayPostGroup(BaseSchema):
     datastream: IdSchema = Field(..., alias="Datastream")
     components: list[str]
     data_array: list[list] = Field(..., alias="dataArray")
+
+    @model_validator(mode="after")
+    def validate_row_lengths(self):
+        n = len(self.components)
+        for i, row in enumerate(self.data_array):
+            if len(row) != n:
+                raise ValueError(
+                    f"dataArray[{i}] has {len(row)} values but components has {n}"
+                )
+        return self

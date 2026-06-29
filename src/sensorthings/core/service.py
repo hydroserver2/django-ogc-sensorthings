@@ -348,9 +348,9 @@ class SensorThingsService:
 
         FK parents are resolved first (created inline or referenced by ID). FK children that
         carry a back-reference to the new entity are deferred until after it is persisted.
-        M2M relationships are resolved before the entity is created. Post-create hooks are
-        called after all nested entities are written. Returns a dict with `iot_id` and
-        `iot_self_link` for the created entity.
+        M2M relationships are resolved before the entity is created. Post-create hooks run
+        after all nested entities are written.
+        Returns a dict with `iot_id` and `iot_self_link` for the created entity.
         """
 
         async with self.backend_adapter.transaction():
@@ -361,9 +361,12 @@ class SensorThingsService:
             # Resolve required single related entities — FK lives on the current entity
             for related_name in entity_type.related_entity_type_names:
                 if (related_dto_name := to_snake(related_name)) in payload:
+                    value = payload.pop(related_dto_name)
+                    if value is None:
+                        continue
                     related_type = self.protocol.get_entity_type(related_name)
                     related_entity_ids[f"{related_dto_name}_id"] = await self.resolve_nested_entity(
-                        related_type, payload.pop(related_dto_name), context
+                        related_type, value, context
                     )
 
             # Resolve collection related entities

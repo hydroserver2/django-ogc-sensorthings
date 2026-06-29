@@ -101,6 +101,7 @@ class SensorThingsV11Config(AppConfig):
                 related_entity_type_names=["Datastream", "FeatureOfInterest"],
                 related_entity_type_set_names=[],
                 optional_properties=["resultQuality", "parameters", "validTime"],
+                optional_related_entity_type_names=["FeatureOfInterest"],
                 dto_class=ObservationDTO,
             )
         )

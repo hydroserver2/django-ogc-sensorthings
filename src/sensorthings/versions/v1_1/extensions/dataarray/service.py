@@ -103,3 +103,67 @@ class DataArrayServiceMixin:
             return {next(iter(collection.keys())): response}
 
         return response
+
+    async def create_observation_entities(
+        self,
+        payload: list,
+        context: HttpRequest,
+    ) -> list[str]:
+        """
+        Create Observations from a list of DataArrayPostGroup objects.
+
+        When the adapter implements create_observations, all DTOs for each group are passed
+        in a single call (bulk path). FoI and phenomenonTime resolution are left to the adapter:
+        feature_of_interest_id and phenomenon_time are absent from the DTO when not supplied.
+
+        Falls back to per-row create_entity when create_observations is not available.
+        """
+
+        results = []
+        adapter = self.backend_adapter  # noqa
+
+        if hasattr(adapter, "create_observations"):
+            for item in payload:
+                n_rows = len(item.data_array)
+                try:
+                    dtos = []
+                    for row in item.data_array:
+                        dto_kwargs = {"datastream_id": item.datastream.id}
+                        for component, value in zip(item.components, row):
+                            if component == "FeatureOfInterest/id":
+                                dto_kwargs["feature_of_interest_id"] = value
+                            else:
+                                dto_kwargs[to_snake(component)] = value
+                        dtos.append(STA.OBSERVATION_ENTITY.build_dto(**dto_kwargs))
+                    entity_ids = await self.run_adapter_operation(  # noqa
+                        "create", STA.OBSERVATION_ENTITY, payload=dtos, context=context
+                    )
+                    results.extend(
+                        build_self_link(
+                            entity_type_set_name=STA.OBSERVATION_ENTITY.set_name,
+                            iot_id=entity_id,
+                            protocol=self.protocol,  # noqa
+                            settings=app_settings,
+                        )
+                        for entity_id in entity_ids
+                    )
+                except (Exception,):
+                    results.extend(["error"] * n_rows)
+        else:
+            for item in payload:
+                for row in item.data_array:
+                    obs_payload = {"datastream": {"id": item.datastream.id}}
+                    for component, value in zip(item.components, row):
+                        if component == "FeatureOfInterest/id":
+                            obs_payload["feature_of_interest"] = {"id": value}
+                        else:
+                            obs_payload[to_snake(component)] = value
+                    try:
+                        entity = await self.create_entity(  # noqa
+                            STA.OBSERVATION_ENTITY, obs_payload, context
+                        )
+                        results.append(entity["iot_self_link"])
+                    except (Exception,):
+                        results.append("error")
+
+        return results

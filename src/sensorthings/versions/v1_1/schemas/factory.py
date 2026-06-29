@@ -215,8 +215,12 @@ class SchemaFactory:
             property_name = to_snake(related_entity_type_name)
             related_entity_type = STA.get_entity_type(related_entity_type_name)
             nested_post_body = self.build_post_body(related_entity_type)
-            namespace["__annotations__"][property_name] = Union[IdSchema, nested_post_body]
-            namespace[property_name] = Field(..., alias=related_entity_type_name)
+            if related_entity_type_name in entity_type.optional_related_entity_type_names:
+                namespace["__annotations__"][property_name] = Union[IdSchema, nested_post_body, None]
+                namespace[property_name] = Field(None, alias=related_entity_type_name)
+            else:
+                namespace["__annotations__"][property_name] = Union[IdSchema, nested_post_body]
+                namespace[property_name] = Field(..., alias=related_entity_type_name)
 
         for related_entity_type_set_name in entity_type.related_entity_type_set_names:
             property_name = to_snake(related_entity_type_set_name)

@@ -10,6 +10,7 @@ class EntityType:
     related_entity_type_names: list[str] = field(default_factory=list)
     related_entity_type_set_names: list[str] = field(default_factory=list)
     optional_properties: list[str] = field(default_factory=list)
+    optional_related_entity_type_names: list[str] = field(default_factory=list)
     dto_class: type | None = field(default=None, compare=False, hash=False)
 
     def __str__(self):
