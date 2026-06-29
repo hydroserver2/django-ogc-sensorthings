@@ -46,7 +46,9 @@ def http_error(exception: Exception) -> HttpError:
 
     traceback.print_exc()
 
-    if isinstance(exception, (ValueError, TypeError)):
+    if isinstance(exception, HttpError):
+        return exception
+    elif isinstance(exception, (ValueError, TypeError)):
         return HttpError(400, "Bad request")
     elif isinstance(exception, PermissionError):
         return HttpError(403, "Permission denied")
