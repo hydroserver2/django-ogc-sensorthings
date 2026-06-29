@@ -40,6 +40,12 @@ class BaseSettings:
     MAX_TOP: int = 100
     """The maximum length of a collection response returned by the service."""
 
+    MAX_TOP_DATA_ARRAY: int = 10000
+    """The maximum length of a dataArray collection response returned by the service."""
+
+    MAX_POST_DATA_ARRAY_OBSERVATIONS: int = 10000
+    """The maximum total number of observations accepted in a CreateObservations request."""
+
     AUTH_HANDLERS: dict[str, Callable] = field(default_factory=dict)
     """Custom authentication handlers for HTTP endpoints. Values may be dotted import strings."""
 
