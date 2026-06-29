@@ -119,6 +119,13 @@ class DataArrayServiceMixin:
         Falls back to per-row create_entity when create_observations is not available.
         """
 
+        total_rows = sum(len(item.data_array) for item in payload)
+        if total_rows > app_settings.MAX_POST_DATA_ARRAY_OBSERVATIONS:
+            raise ValueError(
+                f"Request contains {total_rows} observations; "
+                f"maximum allowed is {app_settings.MAX_POST_DATA_ARRAY_OBSERVATIONS}."
+            )
+
         results = []
         adapter = self.backend_adapter  # noqa
 

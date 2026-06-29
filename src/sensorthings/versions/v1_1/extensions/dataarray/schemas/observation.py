@@ -2,7 +2,7 @@ from typing import Literal
 from ninja import Field
 from pydantic import model_validator
 from sensorthings.types import Absent
-from sensorthings.versions.v1_1 import STA
+from sensorthings.versions.v1_1 import STA, app_settings
 from sensorthings.versions.v1_1.schemas import CollectionQuery, BaseSchema, BaseCollectionSchema, IdSchema
 
 
@@ -10,6 +10,18 @@ class ObservationDataArrayCollectionQuery(CollectionQuery):
     """Query schema for data array collections."""
 
     result_format: Literal["dataArray"] = Field(Absent, alias="$resultFormat")
+    top: int = Field(100, ge=0, alias="$top")
+
+    @model_validator(mode="after")
+    def validate_top_limit(self):
+        limit = (
+            app_settings.MAX_TOP_DATA_ARRAY
+            if self.result_format == "dataArray"
+            else app_settings.MAX_TOP
+        )
+        if self.top > limit:
+            raise ValueError(f"$top must be less than or equal to {limit}")
+        return self
 
 
 class ObservationDataArrayResponse(BaseSchema):

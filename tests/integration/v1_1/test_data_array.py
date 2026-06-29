@@ -1,4 +1,5 @@
 import pytest
+from django.test import override_settings
 from sensorthings.versions.v1_1.backends.django.models import FeatureOfInterest, Observation
 from tests.factories.v1_1.django import (
     create_test_datastream,
@@ -58,6 +59,29 @@ class TestDataArrayNestedPath:
         body = response.json()
         assert len(body["value"]) == 1
         assert f"{datastream.id}" in body["value"][0]["Datastream@iot.navigationLink"]
+
+
+class TestDataArrayTopLimit:
+
+    @override_settings(SENSORTHINGS_V1_1_MAX_TOP=10, SENSORTHINGS_V1_1_MAX_TOP_DATA_ARRAY=50)
+    def test_data_array_top_above_max_top_data_array_returns_422(self, client):
+        response = client.get("/Observations?$resultFormat=dataArray&$top=51")
+        assert response.status_code == 422
+
+    @override_settings(SENSORTHINGS_V1_1_MAX_TOP=10, SENSORTHINGS_V1_1_MAX_TOP_DATA_ARRAY=50)
+    def test_data_array_top_within_max_top_data_array_is_accepted(self, client):
+        response = client.get("/Observations?$resultFormat=dataArray&$top=50")
+        assert response.status_code == 200
+
+    @override_settings(SENSORTHINGS_V1_1_MAX_TOP=10, SENSORTHINGS_V1_1_MAX_TOP_DATA_ARRAY=50)
+    def test_non_data_array_top_above_max_top_returns_422(self, client):
+        response = client.get("/Observations?$top=11")
+        assert response.status_code == 422
+
+    @override_settings(SENSORTHINGS_V1_1_MAX_TOP=10, SENSORTHINGS_V1_1_MAX_TOP_DATA_ARRAY=50)
+    def test_non_data_array_top_within_max_top_is_accepted(self, client):
+        response = client.get("/Observations?$top=10")
+        assert response.status_code == 200
 
 
 class TestCreateObservations:
@@ -166,3 +190,29 @@ class TestCreateObservations:
             self._group(ds, [[self.T1, 1.0]], components=["phenomenonTime", "result", "resultTime"])
         ])
         assert response.status_code == 422
+
+    @override_settings(SENSORTHINGS_V1_1_MAX_POST_DATA_ARRAY_OBSERVATIONS=2)
+    def test_total_rows_above_limit_returns_400(self, client):
+        ds = create_test_datastream()
+        foi = create_test_feature_of_interest()
+        rows = [[self.T1, 1.0, self.T1, str(foi.id)]] * 3
+        response = client.post("/CreateObservations", [self._group(ds, rows)])
+        assert response.status_code == 400
+
+    @override_settings(SENSORTHINGS_V1_1_MAX_POST_DATA_ARRAY_OBSERVATIONS=4)
+    def test_total_rows_across_groups_above_limit_returns_400(self, client):
+        ds_a = create_test_datastream()
+        ds_b = create_test_datastream()
+        foi = create_test_feature_of_interest()
+        row = [self.T1, 1.0, self.T1, str(foi.id)]
+        payload = [self._group(ds_a, [row] * 3), self._group(ds_b, [row] * 2)]
+        response = client.post("/CreateObservations", payload)
+        assert response.status_code == 400
+
+    @override_settings(SENSORTHINGS_V1_1_MAX_POST_DATA_ARRAY_OBSERVATIONS=3)
+    def test_total_rows_at_limit_is_accepted(self, client):
+        ds = create_test_datastream()
+        foi = create_test_feature_of_interest()
+        rows = [[self.T1, 1.0, self.T1, str(foi.id)]] * 3
+        response = client.post("/CreateObservations", [self._group(ds, rows)])
+        assert response.status_code == 201
