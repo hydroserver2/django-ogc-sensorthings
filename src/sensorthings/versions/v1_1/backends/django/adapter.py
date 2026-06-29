@@ -4,6 +4,7 @@ from collections import defaultdict
 from contextlib import asynccontextmanager
 from asgiref.sync import sync_to_async
 from datetime import datetime, timezone
+from odata_query import ast as odata_ast
 from odata_query.ast import _Node  # noqa
 from odata_query.django.django_q import AstToDjangoQVisitor
 from django.http import HttpRequest
@@ -22,6 +23,25 @@ from .models import (Thing, Location, HistoricalLocation, Sensor, ObservedProper
 from ..base import BaseBackendAdapter
 
 
+ODATA_FIELD_REMAP = {
+    "phenomenon_time": "phenomenon_time_begin",
+    "valid_time": "valid_time_begin",
+}
+
+
+class ODataToDjangoQVisitor(AstToDjangoQVisitor):
+    """Extends AstToDjangoQVisitor to translate OData camelCase field names to Django snake_case."""
+
+    def visit_Identifier(self, node: odata_ast.Identifier) -> F:
+        name = ODATA_FIELD_REMAP.get(to_snake(node.name), to_snake(node.name))
+        return F(name)
+
+    def visit_Attribute(self, node: odata_ast.Attribute) -> F:
+        owner = self.visit(node.owner)
+        attr = ODATA_FIELD_REMAP.get(to_snake(node.attr), to_snake(node.attr))
+        return F(owner.name + "__" + attr)
+
+
 class DjangoBaseBackendAdapter:
 
     @staticmethod
@@ -30,7 +50,7 @@ class DjangoBaseBackendAdapter:
         filters: _Node | None = None,
     ):
         if filters is not None:
-            visitor = AstToDjangoQVisitor(model)
+            visitor = ODataToDjangoQVisitor(model)
             return visitor.visit(filters)
 
         return None
