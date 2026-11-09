@@ -121,6 +121,14 @@ class TestCreateObservations:
         client.post("/CreateObservations", [self._group(ds, [[self.T1, 1.0, self.T1, str(foi.id)]])])
         assert Observation.objects.count() == before + 1
 
+    def test_null_result_time_uses_phenomenon_time(self, client):
+        ds = create_test_datastream()
+        foi = create_test_feature_of_interest()
+        response = client.post("/CreateObservations", [self._group(ds, [[self.T1, 1.0, None, str(foi.id)]])])
+        assert response.status_code == 201
+        assert "Observations" in response.json()[0]
+        assert Observation.objects.get().result_time.isoformat() == "2025-01-01T00:00:00+00:00"
+
     def test_multiple_rows_in_one_group(self, client):
         ds = create_test_datastream()
         foi = create_test_feature_of_interest()

@@ -62,6 +62,7 @@ class ODataToDjangoQVisitor(AstToDjangoQVisitor):
     """Extends AstToDjangoQVisitor to translate OData camelCase field names to Django snake_case."""
 
     _json_mode = None
+    crosses_to_many = False
 
     def visit_Attribute(self, node: odata_ast.Attribute):
         return self._json_value(self._field_path(node), self._json_mode)
@@ -130,7 +131,9 @@ class ODataToDjangoQVisitor(AstToDjangoQVisitor):
 
         model = self.root_model
         for part in owner.split("__") if owner else []:
-            model = model._meta.get_field(part).related_model if model else None  # noqa
+            field = model._meta.get_field(part) if model else None  # noqa
+            self.crosses_to_many |= bool(field and (field.one_to_many or field.many_to_many))
+            model = field.related_model if field else None
 
         name = to_snake(name)
 
@@ -249,7 +252,10 @@ class DjangoBaseBackendAdapter:
     ):
         if filters is not None:
             visitor = ODataToDjangoQVisitor(model)
-            return visitor.visit(filters)
+            q = visitor.visit(filters)
+
+            # A filter across a to-many relation joins one row per match, so it must not share the outer query.
+            return Q(pk__in=model._default_manager.filter(q).values("pk")) if visitor.crosses_to_many else q  # noqa
 
         return None
 
@@ -265,7 +271,7 @@ class DjangoBaseBackendAdapter:
 
         visitor = ODataToDjangoQVisitor(model)
 
-        return [
+        expressions = [
             getattr(
                 F(visitor._field_path(  # noqa
                     reduce(odata_ast.Attribute, field.path[1:], odata_ast.Identifier(field.path[0]))
@@ -273,6 +279,11 @@ class DjangoBaseBackendAdapter:
                 "asc" if field.direction == OrderByDirection.ASC else "desc"
             )() for field in orderby
         ]
+
+        if visitor.crosses_to_many:
+            raise InvalidQueryError("Invalid $orderby: paths through a to-many relation are not supported")
+
+        return expressions
 
     @staticmethod
     def select_field(
@@ -340,11 +351,6 @@ class DjangoBaseBackendAdapter:
         try:
             q = self.build_entity_filter_arg(model=manager.model, filters=filters)
             if q is not None:
-                if group_by is not None and group_by[0] != "pk" and (
-                    manager.model._meta.get_field(group_by[0]).many_to_many  # noqa
-                ):
-                    # A filter on the grouping relation must not share its join.
-                    q = Q(pk__in=manager.model._default_manager.filter(q).values("pk"))  # noqa
                 manager = manager.filter(q)
                 manager.query.get_compiler(manager.db).as_sql()  # Surfaces errors Django raises at compile time.
         except EmptyResultSet:
@@ -1240,7 +1246,7 @@ class DjangoBackendAdapter(
             observations.append(Observation(
                 **self.time_fields("phenomenon_time", phenomenon_time),
                 result=dto.result,
-                result_time=dto.result_time if dto.result_time is not Absent else phenomenon_time.split("/")[0],
+                result_time=dto.result_time or phenomenon_time.split("/")[0],
                 result_quality=dto.result_quality if dto.result_quality is not Absent else None,
                 **self.time_fields("valid_time", dto.valid_time),
                 parameters=dto.parameters if dto.parameters is not Absent else None,
@@ -1269,6 +1275,8 @@ class DjangoBackendAdapter(
         for entity_id, dto in payload.items():
             if dto.phenomenon_time is None:
                 raise HttpError(400, "phenomenonTime cannot be null.")
+            if dto.result_time is None:
+                raise HttpError(400, "resultTime cannot be null.")
 
             fields = {
                 field: getattr(dto, field) for field in editable_fields

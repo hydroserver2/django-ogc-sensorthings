@@ -173,6 +173,26 @@ class TestUpdateTimeIntervals:
         assert response.json()["detail"] == "phenomenonTime cannot be null."
         assert self.times(obs, "phenomenon_time") == (self.BEGIN, self.END)
 
+    def test_observation_null_result_time_returns_400(self, client):
+        obs = create_test_observation(result_time=self.BEGIN)
+        response = client.patch(f"/Observations('{obs.id}')", {"resultTime": None})
+        assert response.status_code == 400
+        assert response.json()["detail"] == "resultTime cannot be null."
+        obs.refresh_from_db()
+        assert obs.result_time == self.BEGIN
+
+    def test_observation_result_time_can_be_updated(self, client):
+        obs = create_test_observation(result_time=self.BEGIN)
+        assert client.patch(f"/Observations('{obs.id}')", {"resultTime": self.INSTANT}).status_code == 204
+        obs.refresh_from_db()
+        assert obs.result_time == self.NEW_BEGIN
+
+    def test_observation_other_fields_keep_result_time(self, client):
+        obs = create_test_observation(result_time=self.BEGIN)
+        assert client.patch(f"/Observations('{obs.id}')", {"result": 5.0}).status_code == 204
+        obs.refresh_from_db()
+        assert obs.result_time == self.BEGIN
+
     def test_observation_other_fields_keep_times(self, client):
         obs = self.create_observation()
         assert client.patch(f"/Observations('{obs.id}')", {"result": 5.0}).status_code == 204

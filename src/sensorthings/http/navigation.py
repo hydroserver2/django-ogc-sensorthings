@@ -56,14 +56,14 @@ def _split_entity_and_options(segment: str) -> tuple[str, str | None]:
     return segment[:parenthesis_start], segment[parenthesis_start + 1: -1]
 
 
-def _increment_chain_skip(chain: list[str], target_location: list[str]) -> list[str]:
+def _increment_chain_skip(chain: list[str], target_location: list[str], default_top: int) -> list[str]:
     """
     Recursively walk an $expand chain, including expands nested in query options,
     and increment $skip on the segment identified by target_location.
     """
 
     if len(target_location) > 1 and len(chain) > 1:
-        return [chain[0]] + _increment_chain_skip(chain[1:], target_location[1:])
+        return [chain[0]] + _increment_chain_skip(chain[1:], target_location[1:], default_top)
 
     entity_name, options_content = _split_entity_and_options(chain[0])
     params = {
@@ -73,9 +73,9 @@ def _increment_chain_skip(chain: list[str], target_location: list[str]) -> list[
     } if options_content else {}
 
     if len(target_location) > 1:
-        params["$expand"] = build_next_link_expand(params["$expand"], target_location[1:])
+        params["$expand"] = build_next_link_expand(params["$expand"], target_location[1:], default_top)
     else:
-        top = int(params.get("$top", 100))
+        top = int(params.get("$top", default_top))
         skip = int(params.get("$skip", 0))
 
         params["$top"] = str(top)
@@ -84,7 +84,7 @@ def _increment_chain_skip(chain: list[str], target_location: list[str]) -> list[
     return [f"{entity_name}({';'.join(f'{k}={v}' for k, v in params.items())})"] + chain[1:]
 
 
-def build_next_link_expand(expand_str: str, target_location: list[str]) -> str:
+def build_next_link_expand(expand_str: str, target_location: list[str], default_top: int = 100) -> str:
     """Build the next link for a collection of entities requested by an $expand parameter."""
 
     result_parts = []
@@ -93,7 +93,7 @@ def build_next_link_expand(expand_str: str, target_location: list[str]) -> str:
         chain = split_top_level(part, "/")
 
         if chain[0].split("(")[0] == target_location[0]:
-            chain = _increment_chain_skip(chain, target_location)
+            chain = _increment_chain_skip(chain, target_location, default_top)
 
         result_parts.append("/".join(chain))
 
@@ -103,7 +103,8 @@ def build_next_link_expand(expand_str: str, target_location: list[str]) -> str:
 def build_next_link(
     nav_link: str,
     query_params: dict,
-    target_location: list[str] | None = None
+    target_location: list[str] | None = None,
+    default_top: int = 100,
 ) -> str:
     """Build the next link for a collection of entities."""
 
@@ -113,7 +114,7 @@ def build_next_link(
         if isinstance(expand_param, list):
             expand_param = expand_param[0]
 
-        next_expand = build_next_link_expand(expand_param, target_location)
+        next_expand = build_next_link_expand(expand_param, target_location, default_top)
 
         next_link_query_params = {
             **query_params,
@@ -129,7 +130,7 @@ def build_next_link(
         if isinstance(skip_value, list):
             skip_value = skip_value[0] if skip_value else None
 
-        top = int(top_value) if top_value is not None else 100
+        top = int(top_value) if top_value is not None else default_top
         skip = int(skip_value) if skip_value is not None else 0
         next_skip = skip + top
 

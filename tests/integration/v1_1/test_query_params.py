@@ -1,7 +1,9 @@
 from datetime import datetime, timezone
 from urllib.parse import quote
 import pytest
+from sensorthings.http import validate_filters
 from sensorthings.versions.v1_1.backends.django.adapter import DjangoBackendAdapter
+from sensorthings.versions.v1_1.backends.django.models import Datastream, Location
 from tests.factories.v1_1.django import (
     create_test_thing,
     create_test_datastream,
@@ -1281,3 +1283,152 @@ class TestGroupedQueryOptions:
             create_test_datastream(thing=thing, name=f"D{index}")
         body = client.get("/Things?$expand=Datastreams($orderby=name;$top=1;$count=true)").json()
         assert self.expanded(body, "Datastreams") == {"A": (["D0"], 2), "B": (["D1"], 2)}
+
+
+class TestToManyRelationPaths:
+
+    @staticmethod
+    def create_related():
+        things = {name: create_test_thing(name=name) for name in ("A", "B", "C")}
+        create_test_location(name="L1", things=[things["A"], things["B"]])
+        create_test_location(name="L2", things=[things["A"], things["C"]])
+        for index, thing in enumerate((things["A"], things["A"], things["B"])):
+            create_test_datastream(thing=thing, name=f"D{index}", properties={"depth": 1})
+        return things
+
+    @staticmethod
+    def names(entities):
+        return [entity["name"] for entity in entities]
+
+    @pytest.mark.parametrize("resource,filter_option,expected", [
+        ("Locations", "Things/name ne 'Z'", ["L1", "L2"]),
+        ("Locations", "not (Things/name eq 'B')", ["L1", "L2"]),
+        ("Things", "Datastreams/name ne 'Z'", ["A", "B"]),
+        ("Things", "Datastreams/properties/depth eq 1", ["A", "B"]),
+        ("Datastreams", "Thing/Locations/name ne 'Z'", ["D0", "D1", "D2"]),
+        ("Datastreams", "Thing/name eq 'A'", ["D0", "D1"]),
+        ("Things", "Datastreams/any(d:d/name ne 'Z')", ["A", "B"]),
+    ])
+    def test_filter_returns_each_entity_once(self, client, resource, filter_option, expected):
+        self.create_related()
+        body = client.get(f"/{resource}?$filter={filter_option}&$count=true&$orderby=name").json()
+        assert self.names(body["value"]) == expected
+        assert body["@iot.count"] == len(expected)
+
+    def test_filter_paginates_distinct_entities(self, client):
+        self.create_related()
+        body = client.get("/Locations?$filter=Things/name ne 'Z'&$orderby=name&$top=1&$skip=1").json()
+        assert self.names(body["value"]) == ["L2"]
+
+    def test_foreign_key_grouped_expand(self, client):
+        self.create_related()
+        body = client.get(
+            "/Things?$orderby=name&$expand=Datastreams($filter=Thing/Locations/name ne 'Z';$count=true;$orderby=name)"
+        ).json()
+        assert [
+            (self.names(thing["Datastreams"]), thing["Datastreams@iot.count"]) for thing in body["value"]
+        ] == [(["D0", "D1"], 2), (["D2"], 1), ([], 0)]
+
+    def test_foreign_key_grouped_nested_path(self, client):
+        things = self.create_related()
+        body = client.get(
+            f"/Things('{things['A'].id}')/Datastreams?$filter=Thing/Locations/name ne 'Z'&$count=true&$orderby=name"
+        ).json()
+        assert self.names(body["value"]) == ["D0", "D1"]
+        assert body["@iot.count"] == 2
+
+    @pytest.mark.parametrize("model,filter_option,select_count", [
+        (Datastream, "Thing/name eq 'A'", 1),
+        (Location, "name eq 'L1'", 1),
+        (Location, "Things/name eq 'A'", 2),
+    ])
+    def test_only_to_many_filters_use_a_subquery(self, model, filter_option, select_count):
+        q = DjangoBackendAdapter.build_entity_filter_arg(model, validate_filters(filter_option))
+        assert str(model.objects.filter(q).query).count("SELECT") == select_count
+
+    @pytest.mark.parametrize("path", [
+        "/Locations?$orderby=Things/name",
+        "/Things?$orderby=Datastreams/name",
+        "/Things?$orderby=Datastreams/properties/depth",
+        "/Things?$expand=Locations($orderby=Things/name)",
+        "/Things('{id}')/Locations?$orderby=Things/name",
+    ])
+    def test_orderby_through_to_many_returns_400(self, client, path):
+        things = self.create_related()
+        response = client.get(path.format(id=things["A"].id))
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Invalid $orderby: paths through a to-many relation are not supported"
+
+    def test_orderby_through_foreign_key(self, client):
+        self.create_related()
+        response = client.get("/Datastreams?$orderby=Thing/name desc,name asc")
+        assert response.status_code == 200
+        assert self.names(response.json()["value"]) == ["D2", "D0", "D1"]
+
+
+class TestDefaultPageSize:
+
+    @pytest.fixture
+    def low_limit(self, settings):
+        settings.SENSORTHINGS_V1_1_MAX_TOP = 2
+        settings.SENSORTHINGS_V1_1_MAX_TOP_DATA_ARRAY = 50
+
+    @staticmethod
+    def follow(client, link):
+        return client.get(link.split("/v1.1", 1)[1])
+
+    @staticmethod
+    def create_datastream_with_observations():
+        datastream = create_test_datastream()
+        for result in (1.0, 2.0, 3.0):
+            create_test_observation(datastream=datastream, result=result)
+        return datastream
+
+    def test_collection_uses_limit(self, client, low_limit):
+        for name in ("A", "B", "C"):
+            create_test_thing(name=name)
+        body = client.get("/Things?$orderby=name").json()
+        assert [thing["name"] for thing in body["value"]] == ["A", "B"]
+        assert "$top=2&$skip=2" in body["@iot.nextLink"]
+        assert [thing["name"] for thing in self.follow(client, body["@iot.nextLink"]).json()["value"]] == ["C"]
+
+    def test_observations_use_limit(self, client, low_limit):
+        self.create_datastream_with_observations()
+        response = client.get("/Observations?$orderby=result")
+        assert response.status_code == 200
+        assert [observation["result"] for observation in response.json()["value"]] == [1.0, 2.0]
+
+    def test_data_array_uses_limit(self, client, low_limit):
+        self.create_datastream_with_observations()
+        response = client.get("/Observations?$resultFormat=dataArray")
+        assert response.status_code == 200
+        assert len(response.json()["value"][0]["dataArray"]) == 2
+
+    def test_nested_path_uses_limit(self, client, low_limit):
+        datastream = self.create_datastream_with_observations()
+        response = client.get(f"/Datastreams('{datastream.id}')/Observations?$orderby=result")
+        assert response.status_code == 200
+        assert [observation["result"] for observation in response.json()["value"]] == [1.0, 2.0]
+
+    def test_expand_uses_limit(self, client, low_limit):
+        thing = create_test_thing()
+        for name in ("A", "B", "C"):
+            create_test_datastream(thing=thing, name=name)
+        body = client.get(f"/Things('{thing.id}')?$expand=Datastreams($orderby=name)").json()
+        assert [datastream["name"] for datastream in body["Datastreams"]] == ["A", "B"]
+        assert "$top=2;$skip=2" in body["Datastreams@iot.nextLink"]
+        next_page = self.follow(client, body["Datastreams@iot.nextLink"]).json()
+        assert [datastream["name"] for datastream in next_page["Datastreams"]] == ["C"]
+
+    def test_explicit_top_below_limit(self, client, low_limit):
+        for name in ("A", "B"):
+            create_test_thing(name=name)
+        assert len(client.get("/Things?$top=1").json()["value"]) == 1
+
+    def test_default_stays_100_above_limit(self, client, settings):
+        settings.SENSORTHINGS_V1_1_MAX_TOP = 500
+        for index in range(101):
+            create_test_thing(name=f"T{index}")
+        body = client.get("/Things").json()
+        assert len(body["value"]) == 100
+        assert "$top=100&$skip=100" in body["@iot.nextLink"]

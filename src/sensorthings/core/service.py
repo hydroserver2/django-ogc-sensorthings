@@ -131,7 +131,8 @@ class SensorThingsService:
         validated_filters = validate_filters(filters)
         validated_orderby = validate_orderby(entity_type, self.protocol, orderby)
 
-        top = int(top) if top is not None else 100
+        default_top = min(100, self.settings.MAX_TOP)
+        top = int(top) if top is not None else default_top
         skip = int(skip) if skip is not None else 0
 
         if next_link_target is None:
@@ -304,7 +305,8 @@ class SensorThingsService:
                 responses[collection_id][f"iot_next_link"] = build_next_link(
                     resource_url,
                     dict(context.GET),
-                    next_link_target
+                    next_link_target,
+                    default_top,
                 )
 
         # ------------------------------------------------------------------

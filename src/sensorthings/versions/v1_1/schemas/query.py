@@ -17,4 +17,4 @@ class CollectionQuery(EntityQuery):
     count: bool = Field(False, alias="$count")
     orderby: str = Field(Absent, alias="$orderby")
     skip: int = Field(0, ge=0, alias="$skip")
-    top: int = Field(100, ge=0, le=app_settings.MAX_TOP, alias="$top")
+    top: int | None = Field(None, ge=0, le=app_settings.MAX_TOP, alias="$top")

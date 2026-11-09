@@ -10,7 +10,7 @@ class ObservationDataArrayCollectionQuery(CollectionQuery):
     """Query schema for data array collections."""
 
     result_format: Literal["dataArray"] = Field(Absent, alias="$resultFormat")
-    top: int = Field(100, ge=0, alias="$top")
+    top: int | None = Field(None, ge=0, alias="$top")
 
     @model_validator(mode="after")
     def validate_top_limit(self):
@@ -19,7 +19,7 @@ class ObservationDataArrayCollectionQuery(CollectionQuery):
             if self.result_format == "dataArray"
             else app_settings.MAX_TOP
         )
-        if self.top > limit:
+        if self.top is not None and self.top > limit:
             raise ValueError(f"$top must be less than or equal to {limit}")
         return self
 

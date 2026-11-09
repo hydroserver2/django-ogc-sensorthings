@@ -323,6 +323,35 @@ class TestCreateTimeIntervals:
         assert client.post("/Observations", self.observation_payload(phenomenonTime=None)).status_code == 201
         assert Observation.objects.get().phenomenon_time_begin is not None
 
+    @pytest.mark.parametrize("fields,expected", [
+        ({}, BEGIN),
+        ({"resultTime": None}, BEGIN),
+        ({"phenomenonTime": INTERVAL, "resultTime": None}, BEGIN),
+        ({"resultTime": "2021-01-01T00:00:00Z"}, END),
+    ])
+    def test_observation_result_time(self, client, fields, expected):
+        assert client.post("/Observations", self.observation_payload(**fields)).status_code == 201
+        assert Observation.objects.get().result_time == expected
+
+    def test_observation_null_times_use_server_time(self, client):
+        response = client.post("/Observations", self.observation_payload(phenomenonTime=None, resultTime=None))
+        assert response.status_code == 201
+        observation = Observation.objects.get()
+        assert observation.result_time == observation.phenomenon_time_begin
+
+    def test_deep_insert_null_result_time(self, client):
+        foi = create_test_feature_of_interest()
+        response = client.post("/Datastreams", self.datastream_payload(
+            Observations=[{
+                "phenomenonTime": self.INSTANT,
+                "result": 1.0,
+                "resultTime": None,
+                "FeatureOfInterest": {"@iot.id": str(foi.id)},
+            }],
+        ))
+        assert response.status_code == 201
+        assert Observation.objects.get().result_time == self.BEGIN
+
     @pytest.mark.parametrize("field,property_name", [
         ("phenomenon_time", "phenomenonTime"),
         ("result_time", "resultTime"),
