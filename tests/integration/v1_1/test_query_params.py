@@ -1113,3 +1113,80 @@ class TestNextLinkEncoding:
         next_page = self.follow(client, body["Datastreams@iot.nextLink"])
         assert next_page.status_code == 200
         assert [ds["name"] for ds in next_page.json()["Datastreams"]] == ["B"]
+
+
+class TestJsonComparisonOperands:
+
+    @staticmethod
+    def create_datastreams(thing=None):
+        create_test_datastream(
+            thing=thing,
+            name="Alpha",
+            phenomenon_time_begin=datetime(2021, 1, 1, tzinfo=timezone.utc),
+            properties={"depth": 5, "year": 2021, "label": "alpha", "at": "2021-06-01T00:00:00Z", "day": "2021-01-01"},
+        )
+        create_test_datastream(
+            thing=thing,
+            name="Beta",
+            phenomenon_time_begin=datetime(2019, 1, 1, tzinfo=timezone.utc),
+            properties={"depth": 9, "year": 2023, "label": "Beta", "at": "2018-06-01T00:00:00Z", "day": "2020-01-01"},
+        )
+        create_test_datastream(thing=thing, name="Text", properties={"depth": "not-a-number", "at": "not-a-date"})
+
+    @pytest.mark.parametrize("filter_option,expected", [
+        ("5 eq properties/depth", ["Alpha"]),
+        ("5 ne properties/depth", ["Beta", "Text"]),
+        ("6 lt properties/depth", ["Beta"]),
+        ("6 ge properties/depth", ["Alpha"]),
+        ("properties/depth eq 2 add 3", ["Alpha"]),
+        ("2 add 3 eq properties/depth", ["Alpha"]),
+        ("properties/year eq year(phenomenonTime)", ["Alpha"]),
+        ("year(phenomenonTime) eq properties/year", ["Alpha"]),
+        ("properties/depth eq length(name)", ["Alpha"]),
+        ("properties/label eq name", ["Beta"]),
+        ("name eq properties/label", ["Beta"]),
+        ("properties/label eq tolower('ALPHA')", ["Alpha"]),
+        ("properties/at gt phenomenonTime", ["Alpha"]),
+        ("phenomenonTime lt properties/at", ["Alpha"]),
+        ("properties/depth eq properties/depth", ["Alpha", "Beta", "Text"]),
+        ("properties/label eq id", []),
+    ])
+    def test_filter(self, client, filter_option, expected):
+        self.create_datastreams()
+        response = client.get(f"/Datastreams?$filter={filter_option}")
+        assert response.status_code == 200
+        assert sorted(ds["name"] for ds in response.json()["value"]) == expected
+
+    def test_date_function(self, client):
+        self.create_datastreams()
+        response = client.get("/Datastreams?$filter=properties/day eq date(phenomenonTime)")
+        assert response.status_code == 200
+        assert [ds["name"] for ds in response.json()["value"]] == ["Alpha"]
+
+    @pytest.mark.parametrize("filter_option", [
+        "result lt Datastream/properties/depth",
+        "Datastream/properties/depth gt result",
+    ])
+    def test_numeric_column_through_relation(self, client, filter_option):
+        datastream = create_test_datastream(properties={"depth": 5})
+        create_test_observation(datastream=datastream, result=1.0)
+        create_test_observation(datastream=datastream, result=6.0)
+        response = client.get(f"/Observations?$filter={filter_option}")
+        assert response.status_code == 200
+        assert [observation["result"] for observation in response.json()["value"]] == [1.0]
+
+    @pytest.mark.parametrize("filter_option", [
+        "Datastreams/any(d:d/properties/depth eq 5)",
+        "Datastreams/any(d:5 eq d/properties/depth)",
+    ])
+    def test_inside_collection_operator(self, client, filter_option):
+        keep = create_test_thing(name="Keep")
+        self.create_datastreams(thing=keep)
+        create_test_datastream(thing=create_test_thing(name="Drop"), properties={"depth": 1})
+        response = client.get(f"/Things?$filter={filter_option}")
+        assert response.status_code == 200
+        assert [thing["name"] for thing in response.json()["value"]] == ["Keep"]
+
+    def test_invalid_reversed_in_returns_400(self, client):
+        response = client.get("/Datastreams?$filter=5 in properties/depth")
+        assert response.status_code == 400

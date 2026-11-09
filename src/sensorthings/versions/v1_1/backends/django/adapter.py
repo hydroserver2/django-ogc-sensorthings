@@ -14,7 +14,7 @@ from django.core.exceptions import EmptyResultSet, FieldDoesNotExist, FieldError
 from django.http import HttpRequest
 from django.db import transaction as django_transaction
 from django.db.models import (QuerySet, Manager, Count, F, Window, Model, Q, Case, When, Value, FloatField, TextField,
-                              JSONField, CharField, DateTimeField, ExpressionWrapper)
+                              JSONField, CharField, DateTimeField, ExpressionWrapper, IntegerField, DecimalField)
 from django.db.models.fields.json import KeyTextTransform, KeyTransform
 from django.db.models.functions import Cast, Concat, RowNumber
 from django.db.models.expressions import OrderBy
@@ -38,6 +38,12 @@ JSON_FUNCTION_TYPES = {
     "round": "number", "floor": "number", "ceiling": "number",
     "year": "datetime", "month": "datetime", "day": "datetime", "hour": "datetime",
     "minute": "datetime", "second": "datetime", "date": "datetime", "time": "datetime",
+}
+JSON_COMPARE_NUMBER_FUNCTIONS = {
+    "year", "month", "day", "hour", "minute", "second", "round", "floor", "ceiling", "length", "indexof",
+}
+JSON_FLIPPED_COMPARATORS = {
+    odata_ast.Gt: odata_ast.Lt, odata_ast.GtE: odata_ast.LtE, odata_ast.Lt: odata_ast.Gt, odata_ast.LtE: odata_ast.GtE,
 }
 
 
@@ -70,20 +76,25 @@ class ODataToDjangoQVisitor(AstToDjangoQVisitor):
         return self._with_json_mode(mode, super().visit_Call, node)
 
     def visit_Compare(self, node: odata_ast.Compare):
-        if (
-            isinstance(node.left, (odata_ast.Identifier, odata_ast.Attribute))
-            and isinstance(node.right, odata_ast._Literal)  # noqa
-        ):
-            path = self.visit(node.left).name
-            if self._json_keys(path) is not None:
-                return self._compare_json(path, node.comparator, node.right)
+        left, right, comparator = node.left, node.right, node.comparator
 
-        if isinstance(node.left, odata_ast.Attribute) and isinstance(node.right, odata_ast.Call):
-            path = self.visit(node.left).name
-            if self._json_keys(path):
-                return self.visit(node.comparator)(self._json_text(path), self.visit(node.right))
+        if self._is_json_path(right) and not self._is_json_path(left):
+            left, right = right, left
+            comparator = JSON_FLIPPED_COMPARATORS.get(type(comparator), type(comparator))()
 
-        return super().visit_Compare(node)
+        if not self._is_json_path(left) or self._is_json_path(right):
+            return super().visit_Compare(node)
+
+        path = self._field_path(left)
+        if isinstance(right, odata_ast._Literal):  # noqa
+            return self._compare_json(path, comparator, right)
+
+        mode = self._value_type(right)
+        expression = self.visit(right)
+
+        return self.visit(comparator)(
+            self._json_value(path, mode), Cast(expression, TextField()) if mode == "text" else expression
+        )
 
     def visit_CollectionLambda(self, node: odata_ast.CollectionLambda):
         result = super().visit_CollectionLambda(node)
@@ -140,6 +151,34 @@ class ODataToDjangoQVisitor(AstToDjangoQVisitor):
             model = field.related_model
 
         return None
+
+    def _is_json_path(self, node: odata_ast._Node) -> bool:  # noqa
+        """Return whether a node references a JSONField or a value inside one."""
+
+        return isinstance(node, (odata_ast.Identifier, odata_ast.Attribute)) and (
+            self._json_keys(self._field_path(node)) is not None
+        )
+
+    def _value_type(self, node: odata_ast._Node) -> str:  # noqa
+        """Return the JSON extraction mode that matches the type of a non-JSON expression."""
+
+        if isinstance(node, odata_ast.BinOp):
+            return "number"
+        if isinstance(node, odata_ast.Call):
+            return "number" if node.func.full_name().lower() in JSON_COMPARE_NUMBER_FUNCTIONS else "text"
+        if not isinstance(node, (odata_ast.Identifier, odata_ast.Attribute)):
+            return "text"
+
+        model = self.root_model
+        *relations, column = self._field_path(node).split("__")
+        for part in relations:
+            model = model._meta.get_field(part).related_model  # noqa
+        field = model._meta.get_field(column)  # noqa
+
+        if isinstance(field, (IntegerField, FloatField, DecimalField)):
+            return "number"
+
+        return "datetime" if isinstance(field, DateTimeField) else "text"
 
     def _json_text(self, path: str):
         """Extract the text of a JSON value, supporting nested keys and related entities."""
