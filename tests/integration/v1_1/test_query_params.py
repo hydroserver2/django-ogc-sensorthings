@@ -420,3 +420,86 @@ class TestBackendErrors:
         response = client.get("/Things")
         assert response.status_code == 500
         assert response.json()["detail"] == "Internal server error"
+
+
+class TestJsonPropertyFilter:
+
+    PROPERTIES = {
+        "camel": {
+            "timeUnit": "days",
+            "count": 5,
+            "ratio": 1.5,
+            "active": True,
+            "nested": {"innerKey": "x"},
+            "emptyValue": None,
+            "note": "plain",
+            "contains": "x",
+            "phenomenonTime": "now",
+        },
+        "snake": {"time_unit": "days", "count": 0},
+        "text": {"timeUnit": "hours", "count": "abc", "active": False, "nested": {"innerKey": "y"}},
+        "numeric_text": {"count": "5"},
+        "empty": {},
+        "no_properties": None,
+    }
+
+    @classmethod
+    def create_datastreams(cls, thing=None):
+        for name, properties in cls.PROPERTIES.items():
+            create_test_datastream(name=name, properties=properties, thing=thing)
+
+    @pytest.mark.parametrize("filter_option,expected", [
+        ("properties/timeUnit eq 'days'", ["camel"]),
+        ("properties/time_unit eq 'days'", ["snake"]),
+        ("properties/timeUnit ne 'days'", ["text"]),
+        ("properties/count eq 5", ["camel"]),
+        ("properties/count eq 'abc'", ["text"]),
+        ("properties/count ne 5", ["numeric_text", "snake", "text"]),
+        ("properties/count gt 1", ["camel", "numeric_text"]),
+        ("properties/count ge 5", ["camel", "numeric_text"]),
+        ("properties/count lt 1", ["snake"]),
+        ("properties/count le 5", ["camel", "numeric_text", "snake"]),
+        ("properties/ratio gt 1.0", ["camel"]),
+        ("properties/note gt 'a'", ["camel"]),
+        ("properties/active eq true", ["camel"]),
+        ("properties/active eq false", ["text"]),
+        ("properties/active ne true", ["text"]),
+        ("properties/emptyValue eq null", ["camel", "empty", "no_properties", "numeric_text", "snake", "text"]),
+        ("properties/emptyValue ne null", []),
+        ("properties/timeUnit eq null", ["empty", "no_properties", "numeric_text", "snake"]),
+        ("properties/timeUnit ne null", ["camel", "text"]),
+        ("properties/missingKey ne 'x'", []),
+        ("properties/nested/innerKey eq 'x'", ["camel"]),
+        ("properties/contains eq 'x'", ["camel"]),
+        ("properties/phenomenonTime eq 'now'", ["camel"]),
+        ("properties/timeUnit eq 'days' and properties/count gt 1", ["camel"]),
+        ("properties/timeUnit eq 'hours' or properties/count eq 5", ["camel", "text"]),
+    ])
+    def test_filter(self, client, filter_option, expected):
+        self.create_datastreams()
+        response = client.get(f"/Datastreams?$filter={filter_option}")
+        assert response.status_code == 200
+        assert sorted(ds["name"] for ds in response.json()["value"]) == expected
+
+    def test_filter_through_related_entity(self, client):
+        create_test_datastream(name="Keep", thing=create_test_thing(properties={"siteCode": "X"}))
+        create_test_datastream(name="Drop", thing=create_test_thing(properties={"siteCode": "Y"}))
+        body = client.get("/Datastreams?$filter=Thing/properties/siteCode eq 'X'").json()
+        assert [ds["name"] for ds in body["value"]] == ["Keep"]
+
+    def test_filter_inside_expand(self, client):
+        thing = create_test_thing()
+        self.create_datastreams(thing=thing)
+        body = client.get(f"/Things('{thing.id}')?$expand=Datastreams($filter=properties/timeUnit eq 'days')").json()
+        assert [ds["name"] for ds in body["Datastreams"]] == ["camel"]
+
+    @pytest.mark.parametrize("filter_option,message", [
+        ("properties/active gt true", "Cannot apply 'Gt' to 'Boolean'"),
+        ("properties/count gt null", "Cannot apply 'Gt' to 'Null'"),
+        ("properties/timeUnit eq 2020-01-01T00:00:00Z", "Cannot apply 'Eq' to 'DateTime'"),
+        ("bogus/key eq 1", "unknown property"),
+    ])
+    def test_invalid_filter_returns_400(self, client, filter_option, message):
+        response = client.get(f"/Datastreams?$filter={filter_option}")
+        assert response.status_code == 400
+        assert message in response.json()["detail"]

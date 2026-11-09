@@ -8,13 +8,15 @@ from odata_query import ast as odata_ast
 from odata_query.ast import _Node  # noqa
 from odata_query.django.django_q import AstToDjangoQVisitor
 from odata_query.django.django_q_ext import NotEqual
-from odata_query.exceptions import ODataException
+from odata_query.exceptions import ODataException, TypeException
 from ninja.errors import HttpError
-from django.core.exceptions import FieldError
+from django.core.exceptions import FieldDoesNotExist, FieldError
 from django.http import HttpRequest
 from django.db import transaction as django_transaction
-from django.db.models import QuerySet, Manager, Count, F, Window, Model
-from django.db.models.functions import RowNumber
+from django.db.models import (QuerySet, Manager, Count, F, Window, Model, Q, Case, When, Value, FloatField, TextField,
+                              JSONField)
+from django.db.models.fields.json import KT
+from django.db.models.functions import Cast, RowNumber
 from django.db.models.expressions import OrderBy
 from pydantic.alias_generators import to_snake
 from sensorthings.http import InvalidQueryError
@@ -32,6 +34,8 @@ ODATA_FIELD_REMAP = {
     "phenomenon_time": "phenomenon_time_begin",
     "valid_time": "valid_time_begin",
 }
+
+JSON_NUMBER_PATTERN = r"^-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$"
 
 
 def _not_equal_as_sql(self, compiler, connection):
@@ -54,8 +58,60 @@ class ODataToDjangoQVisitor(AstToDjangoQVisitor):
 
     def visit_Attribute(self, node: odata_ast.Attribute) -> F:
         owner = self.visit(node.owner)
+        if self._is_json_path(owner.name):
+            return F(owner.name + "__" + node.attr)
         attr = ODATA_FIELD_REMAP.get(to_snake(node.attr), to_snake(node.attr))
         return F(owner.name + "__" + attr)
+
+    def visit_Compare(self, node: odata_ast.Compare):
+        if (
+            isinstance(node.left, (odata_ast.Identifier, odata_ast.Attribute))
+            and isinstance(node.right, odata_ast._Literal)  # noqa
+        ):
+            path = self.visit(node.left).name
+            if self._is_json_path(path):
+                return self._compare_json(path, node.comparator, node.right)
+
+        return super().visit_Compare(node)
+
+    def _is_json_path(self, path: str) -> bool:
+        """Return whether a Django field path reaches a JSONField."""
+
+        model = self.root_model
+
+        for part in path.split("__"):
+            field = model._meta.get_field(part)  # noqa
+            if isinstance(field, JSONField):
+                return True
+            if not field.is_relation:
+                return False
+            model = field.related_model
+
+        return False
+
+    def _compare_json(self, path: str, comparator: odata_ast._Node, literal: odata_ast._Node):  # noqa
+        """Compare a value inside a JSONField with a literal."""
+
+        is_equality = isinstance(comparator, (odata_ast.Eq, odata_ast.NotEq))
+        allowed = (odata_ast.String, odata_ast.Integer, odata_ast.Float)
+        if not isinstance(literal, allowed + ((odata_ast.Boolean, odata_ast.Null) if is_equality else ())):
+            raise TypeException(type(comparator).__name__, type(literal).__name__)
+
+        value = literal.py_val
+        has_key = Q(**{f"{path}__isnull": False})
+        matches = Q(**{f"{path}__exact": value})
+
+        if isinstance(comparator, odata_ast.NotEq):
+            return has_key & ~matches
+        if isinstance(comparator, odata_ast.Eq):
+            return matches | ~has_key if value is None else matches
+
+        if isinstance(literal, odata_ast.String):
+            return self.visit(comparator)(Cast(KT(path), TextField()), Value(value))
+
+        number = Case(When(**{f"{path}__regex": JSON_NUMBER_PATTERN}, then=Cast(KT(path), FloatField())))
+
+        return self.visit(comparator)(number, Value(value))
 
 
 class DjangoBaseBackendAdapter:
@@ -139,7 +195,7 @@ class DjangoBaseBackendAdapter:
                 manager = manager.filter(q)
         except ODataException as e:
             raise InvalidQueryError(f"Invalid $filter: {e}") from e
-        except FieldError as e:
+        except (FieldError, FieldDoesNotExist) as e:
             raise InvalidQueryError("Invalid $filter: unknown property") from e
         except TypeError as e:
             raise InvalidQueryError("Invalid $filter: expression must be a boolean condition") from e
