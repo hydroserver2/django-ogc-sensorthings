@@ -57,30 +57,30 @@ def _split_entity_and_options(segment: str) -> tuple[str, str | None]:
 
 def _increment_chain_skip(chain: list[str], target_location: list[str]) -> list[str]:
     """
-    Recursively walk a slash-separated $expand chain and increment $skip on the
-    segment identified by target_location.
+    Recursively walk an $expand chain, including expands nested in query options,
+    and increment $skip on the segment identified by target_location.
     """
 
-    if len(target_location) > 1:
-        next_entity, _ = _split_entity_and_options(chain[1])
-
+    if len(target_location) > 1 and len(chain) > 1:
         return [chain[0]] + _increment_chain_skip(chain[1:], target_location[1:])
 
-    else:
-        entity_name, options_content = _split_entity_and_options(chain[0])
-        params = {
-            k.strip(): v.strip()
-            for token in split_top_level(options_content, ";")
-            for k, _, v in [token.partition("=")] if v
-        } if options_content else {}
+    entity_name, options_content = _split_entity_and_options(chain[0])
+    params = {
+        k.strip(): v.strip()
+        for token in split_top_level(options_content, ";")
+        for k, _, v in [token.partition("=")] if v
+    } if options_content else {}
 
+    if len(target_location) > 1:
+        params["$expand"] = build_next_link_expand(params["$expand"], target_location[1:])
+    else:
         top = int(params.get("$top", 100))
         skip = int(params.get("$skip", 0))
 
         params["$top"] = str(top)
         params["$skip"] = str(skip + top)
 
-        return [f"{entity_name}({';'.join(f'{k}={v}' for k, v in params.items())})"] + chain[1:]
+    return [f"{entity_name}({';'.join(f'{k}={v}' for k, v in params.items())})"] + chain[1:]
 
 
 def build_next_link_expand(expand_str: str, target_location: list[str]) -> str:
