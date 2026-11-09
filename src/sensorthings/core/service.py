@@ -266,12 +266,12 @@ class SensorThingsService:
                 expanded_values = {}
 
                 for field, expanded in related_entities.items():
-                    if "__UNGROUPED__" in expanded:
-                        entity_data = expanded.get("__UNGROUPED__", {})
-                    else:
-                        entity_data = expanded.get(entity_id, {})
+                    is_to_one = field in entity_type.related_entity_type_names
+                    entity_data = expanded.get(
+                        getattr(entity, f"{to_snake(field)}_id") if is_to_one else entity_id, {}
+                    )
 
-                    if "__UNGROUPED__" in expanded and "value" in entity_data:
+                    if is_to_one and "value" in entity_data:
                         expanded_values[to_snake(field)] = entity_data["value"][0] if entity_data["value"] else None
                     elif "value" in entity_data:
                         expanded_values[to_snake(field)] = entity_data["value"]
@@ -285,6 +285,13 @@ class SensorThingsService:
                 collection_values.append(
                     field_values | nav_links | expanded_values
                 )
+
+            if next_link_target and collection_id == "__UNGROUPED__":
+                responses.update({
+                    expanded_id: {"value": [value]}
+                    for expanded_id, value in zip(collection.entity_ids, collection_values)
+                })
+                continue
 
             responses[collection_id] = {"value": collection_values[:top]}
 

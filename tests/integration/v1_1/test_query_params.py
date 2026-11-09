@@ -6,6 +6,10 @@ from tests.factories.v1_1.django import (
     create_test_datastream,
     create_test_observation,
     create_test_location,
+    create_test_sensor,
+    create_test_observed_property,
+    create_test_feature_of_interest,
+    create_test_historical_location,
 )
 
 
@@ -819,3 +823,123 @@ class TestCollectionOperators:
             "/Locations?$filter=name eq 'Keep'&$expand=Things($filter=Datastreams/all(d:d/name eq 'match'))"
         ).json()
         assert [thing["name"] for thing in body["value"][0]["Things"]] == ["allmatch"]
+
+
+class TestToOneExpand:
+
+    EXPECTED = {
+        "D0": {"Thing": "T0", "Sensor": "S0", "ObservedProperty": "P0"},
+        "D1": {"Thing": "T1", "Sensor": "S1", "ObservedProperty": "P1"},
+        "D2": {"Thing": "T2", "Sensor": "S2", "ObservedProperty": "P2"},
+        "D3": {"Thing": "T0", "Sensor": "S1", "ObservedProperty": "P2"},
+    }
+
+    @classmethod
+    def create_datastreams(cls):
+        things = {name: create_test_thing(name=name) for name in ("T0", "T1", "T2")}
+        sensors = {name: create_test_sensor(name=name) for name in ("S0", "S1", "S2")}
+        properties = {name: create_test_observed_property(name=name) for name in ("P0", "P1", "P2")}
+        datastreams = {
+            name: create_test_datastream(
+                name=name,
+                thing=things[related["Thing"]],
+                sensor=sensors[related["Sensor"]],
+                observed_property=properties[related["ObservedProperty"]],
+            )
+            for name, related in cls.EXPECTED.items()
+        }
+        return things, datastreams
+
+    @classmethod
+    def assert_related(cls, datastreams, *relations):
+        assert datastreams
+        for datastream in datastreams:
+            for relation in relations:
+                assert datastream[relation]["name"] == cls.EXPECTED[datastream["name"]][relation]
+
+    def test_each_row_gets_its_own_entities(self, client):
+        self.create_datastreams()
+        body = client.get("/Datastreams?$expand=Thing,Sensor,ObservedProperty").json()
+        self.assert_related(body["value"], "Thing", "Sensor", "ObservedProperty")
+
+    def test_with_select(self, client):
+        self.create_datastreams()
+        body = client.get("/Datastreams?$select=id,name&$expand=Thing($select=id,name),Sensor($select=id,name)").json()
+        self.assert_related(body["value"], "Thing", "Sensor")
+
+    def test_with_select_without_id(self, client):
+        self.create_datastreams()
+        body = client.get("/Datastreams?$select=name&$expand=Thing($select=name)").json()
+        self.assert_related(body["value"], "Thing")
+
+    def test_on_nested_path(self, client):
+        things, _ = self.create_datastreams()
+        body = client.get(f"/Things('{things['T0'].id}')/Datastreams?$expand=ObservedProperty").json()
+        self.assert_related(body["value"], "ObservedProperty")
+
+    @pytest.mark.parametrize("expand", [
+        "Datastreams($expand=Sensor,ObservedProperty)",
+        "Datastreams/Sensor",
+    ])
+    def test_inside_to_many_expand(self, client, expand):
+        self.create_datastreams()
+        relations = ["Sensor", "ObservedProperty"] if "ObservedProperty" in expand else ["Sensor"]
+        body = client.get(f"/Things?$expand={expand}").json()
+        self.assert_related([ds for thing in body["value"] for ds in thing["Datastreams"]], *relations)
+
+    def test_to_many_inside_to_one_expand(self, client):
+        self.create_datastreams()
+        body = client.get("/Datastreams?$expand=Thing($expand=Datastreams($orderby=name))").json()
+        by_thing = {"T0": ["D0", "D3"], "T1": ["D1"], "T2": ["D2"]}
+        for datastream in body["value"]:
+            thing = datastream["Thing"]
+            assert thing["name"] == self.EXPECTED[datastream["name"]]["Thing"]
+            assert [nested["name"] for nested in thing["Datastreams"]] == by_thing[thing["name"]]
+
+    def test_observations(self, client):
+        _, datastreams = self.create_datastreams()
+        features = [create_test_feature_of_interest(name=name) for name in ("F0", "F1")]
+        create_test_observation(result=1.0, datastream=datastreams["D0"], feature_of_interest=features[0])
+        create_test_observation(result=2.0, datastream=datastreams["D1"], feature_of_interest=features[1])
+        body = client.get("/Observations?$orderby=result&$expand=Datastream,FeatureOfInterest").json()
+        assert [(obs["Datastream"]["name"], obs["FeatureOfInterest"]["name"]) for obs in body["value"]] == [
+            ("D0", "F0"),
+            ("D1", "F1"),
+        ]
+
+    def test_historical_locations(self, client):
+        things, _ = self.create_datastreams()
+        for year, name in ((2020, "T0"), (2021, "T1")):
+            create_test_historical_location(thing=things[name], time=datetime(year, 1, 1, tzinfo=timezone.utc))
+        body = client.get("/HistoricalLocations?$orderby=time&$expand=Thing").json()
+        assert [location["Thing"]["name"] for location in body["value"]] == ["T0", "T1"]
+
+    def test_filter_only_attaches_to_matching_rows(self, client):
+        self.create_datastreams()
+        body = client.get("/Datastreams?$expand=Thing($filter=name eq 'T1')").json()
+        expanded = {ds["name"]: ds.get("Thing", {}).get("name") for ds in body["value"]}
+        assert expanded == {"D0": None, "D1": "T1", "D2": None, "D3": None}
+
+    def test_top_does_not_limit_related_entities(self, client):
+        self.create_datastreams()
+        body = client.get("/Datastreams?$expand=Thing($top=1)").json()
+        self.assert_related(body["value"], "Thing")
+
+    def test_count_is_not_added(self, client):
+        self.create_datastreams()
+        body = client.get("/Datastreams?$expand=Thing($count=true)").json()
+        self.assert_related(body["value"], "Thing")
+        assert not any("Thing@iot.count" in datastream for datastream in body["value"])
+
+    def test_single_entity(self, client):
+        _, datastreams = self.create_datastreams()
+        body = client.get(f"/Datastreams('{datastreams['D1'].id}')?$expand=Thing,Sensor").json()
+        self.assert_related([body], "Thing", "Sensor")
+
+    def test_to_many_expand_is_unchanged(self, client):
+        self.create_datastreams()
+        body = client.get("/Things?$orderby=name&$expand=Datastreams($orderby=name;$count=true)").json()
+        assert [
+            (thing["name"], [ds["name"] for ds in thing["Datastreams"]], thing["Datastreams@iot.count"])
+            for thing in body["value"]
+        ] == [("T0", ["D0", "D3"], 2), ("T1", ["D1"], 1), ("T2", ["D2"], 1)]
