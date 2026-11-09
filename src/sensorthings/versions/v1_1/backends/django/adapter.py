@@ -1,3 +1,4 @@
+from functools import reduce
 from typing import Any, Callable
 from itertools import groupby
 from collections import defaultdict
@@ -195,6 +196,7 @@ class DjangoBaseBackendAdapter:
 
     @staticmethod
     def build_orderby_arg(
+        model: type[Model],
         orderby: list[OrderByField] | None = None,
     ) -> list[OrderBy]:
         """Translate a list of OrderByField descriptors into Django OrderBy expressions."""
@@ -202,9 +204,13 @@ class DjangoBaseBackendAdapter:
         if not orderby:
             orderby = []
 
+        visitor = ODataToDjangoQVisitor(model)
+
         return [
             getattr(
-                F("__".join(to_snake(path) for path in field.path)),
+                F(visitor._field_path(  # noqa
+                    reduce(odata_ast.Attribute, field.path[1:], odata_ast.Identifier(field.path[0]))
+                )),
                 "asc" if field.direction == OrderByDirection.ASC else "desc"
             )() for field in orderby
         ]
@@ -271,7 +277,7 @@ class DjangoBaseBackendAdapter:
         if group_by is None:
             entity_count = manager.count() if count else None
 
-            manager = manager.order_by(*self.build_orderby_arg(orderby))
+            manager = manager.order_by(*self.build_orderby_arg(manager.model, orderby))
             queryset = manager.only(*select) if select is not None else manager.all()
             queryset = queryset[lower_page_index:upper_page_index]
 
@@ -306,7 +312,7 @@ class DjangoBaseBackendAdapter:
                 row_number=Window(
                     expression=RowNumber(),
                     partition_by=[F(group_by[0])],
-                    order_by=self.build_orderby_arg(orderby),
+                    order_by=self.build_orderby_arg(manager.model, orderby),
                 )
             ).filter(row_number__gt=lower_page_index, row_number__lte=upper_page_index)
 

@@ -625,3 +625,80 @@ class TestJsonFunctionFilter:
         )
         body = client.get("/Observations?$filter=year(phenomenonTime) eq 2020").json()
         assert [obs["result"] for obs in body["value"]] == [1.0]
+
+
+class TestOrderBy:
+
+    @staticmethod
+    def create_datastreams():
+        far = create_test_thing(properties={"siteCount": 30})
+        near = create_test_thing(properties={"siteCount": 4})
+        create_test_datastream(
+            name="a", thing=near, properties={"sortKey": 2, "group": "y", "nested": {"rankKey": 30}}
+        )
+        create_test_datastream(
+            name="b", thing=far, properties={"sortKey": 10, "group": "x", "nested": {"rankKey": 4}}
+        )
+        create_test_datastream(
+            name="c", thing=far, properties={"sortKey": 1, "group": "y", "nested": {"rankKey": 100}}
+        )
+        return far
+
+    @staticmethod
+    def create_observations():
+        ds = create_test_datastream()
+        for result, year, rank in ((1.0, 2022, 2), (2.0, 2020, 10), (3.0, 2021, 1)):
+            create_test_observation(
+                result=result,
+                datastream=ds,
+                phenomenon_time_begin=datetime(year, 1, 1, tzinfo=timezone.utc),
+                parameters={"rankKey": rank},
+            )
+        return ds
+
+    @pytest.mark.parametrize("orderby,expected", [
+        ("properties/sortKey", ["c", "a", "b"]),
+        ("properties/sortKey desc", ["b", "a", "c"]),
+        ("properties/nested/rankKey", ["b", "a", "c"]),
+        ("properties/group,properties/sortKey", ["b", "c", "a"]),
+        ("Thing/properties/siteCount desc,name", ["b", "c", "a"]),
+    ])
+    def test_datastreams(self, client, orderby, expected):
+        self.create_datastreams()
+        body = client.get(f"/Datastreams?$orderby={orderby}").json()
+        assert [ds["name"] for ds in body["value"]] == expected
+
+    def test_json_key_on_nested_path(self, client):
+        thing = self.create_datastreams()
+        body = client.get(f"/Things('{thing.id}')/Datastreams?$orderby=properties/sortKey").json()
+        assert [ds["name"] for ds in body["value"]] == ["c", "b"]
+
+    def test_json_key_inside_expand(self, client):
+        thing = self.create_datastreams()
+        body = client.get(f"/Things('{thing.id}')?$expand=Datastreams($orderby=properties/sortKey)").json()
+        assert [ds["name"] for ds in body["Datastreams"]] == ["c", "b"]
+
+    @pytest.mark.parametrize("orderby,expected", [
+        ("phenomenonTime", [2.0, 3.0, 1.0]),
+        ("phenomenonTime desc", [1.0, 3.0, 2.0]),
+        ("parameters/rankKey", [3.0, 1.0, 2.0]),
+        ("parameters/rankKey desc", [2.0, 1.0, 3.0]),
+    ])
+    def test_observations(self, client, orderby, expected):
+        self.create_observations()
+        body = client.get(f"/Observations?$orderby={orderby}").json()
+        assert [obs["result"] for obs in body["value"]] == expected
+
+    def test_valid_time_succeeds(self, client):
+        self.create_observations()
+        assert client.get("/Observations?$orderby=validTime").status_code == 200
+
+    def test_phenomenon_time_inside_expand(self, client):
+        ds = self.create_observations()
+        body = client.get(f"/Datastreams('{ds.id}')?$expand=Observations($orderby=phenomenonTime)").json()
+        assert [obs["result"] for obs in body["Observations"]] == [2.0, 3.0, 1.0]
+
+    def test_phenomenon_time_with_data_array(self, client):
+        self.create_observations()
+        body = client.get("/Observations?$resultFormat=dataArray&$orderby=phenomenonTime&$select=result").json()
+        assert body["value"][0]["dataArray"] == [[2.0], [3.0], [1.0]]
