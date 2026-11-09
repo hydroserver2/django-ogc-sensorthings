@@ -163,7 +163,7 @@ class DjangoBaseBackendAdapter:
                     partition_by=[F(group_by[0])],
                     order_by=self.build_orderby_arg(orderby),
                 )
-            ).filter(row_number__gte=lower_page_index, row_number__lte=upper_page_index)
+            ).filter(row_number__gt=lower_page_index, row_number__lte=upper_page_index)
 
             queryset = manager.only(*select) if select is not None else manager.all()
 

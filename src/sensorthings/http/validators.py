@@ -149,23 +149,27 @@ def split_top_level(
     open_char: str = "(",
     close_char: str = ")"
 ) -> list[str]:
-    """"""
+    """Split text on a delimiter, ignoring delimiters nested in brackets or single-quoted strings."""
 
     tokens: list[str] = []
     token_chars: list[str] = []
     depth = 0
+    in_string = False
 
     for char in text:
-        if char == open_char:
-            depth += 1
-        elif char == close_char:
-            depth -= 1
-            if depth < 0:
-                raise ValueError("Closing character cannot precede opening character")
-        elif char == delimiter and depth == 0:
-            tokens.append("".join(token_chars))
-            token_chars.clear()
-            continue
+        if char == "'":
+            in_string = not in_string
+        elif not in_string:
+            if char == open_char:
+                depth += 1
+            elif char == close_char:
+                depth -= 1
+                if depth < 0:
+                    raise ValueError("Closing character cannot precede opening character")
+            elif char == delimiter and depth == 0:
+                tokens.append("".join(token_chars))
+                token_chars.clear()
+                continue
 
         token_chars.append(char)
 
@@ -209,6 +213,10 @@ def validate_expand(
             to_snake(param_token.split("=")[0].lstrip("$")): "=".join(param_token.split("=")[1:])
             for param_token in split_top_level(param_string, ";")
         } if param_string else {}
+
+        # `get_collection` takes the $filter option as `filters`.
+        if "filter" in params:
+            params["filters"] = params.pop("filter")
 
         if len(nested_tokens) > 1:
             params["expand"] = "/".join(nested_tokens[1:])

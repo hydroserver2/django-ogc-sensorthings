@@ -1,4 +1,5 @@
 from sensorthings.core import BaseSettings, BaseProtocol
+from .validators import split_top_level
 
 
 def build_iot_id(
@@ -69,7 +70,7 @@ def _increment_chain_skip(chain: list[str], target_location: list[str]) -> list[
         entity_name, options_content = _split_entity_and_options(chain[0])
         params = {
             k.strip(): v.strip()
-            for token in options_content.split(";")
+            for token in split_top_level(options_content, ";")
             for k, _, v in [token.partition("=")] if v
         } if options_content else {}
 
@@ -87,8 +88,8 @@ def build_next_link_expand(expand_str: str, target_location: list[str]) -> str:
 
     result_parts = []
 
-    for part in expand_str.split(","):
-        chain = part.split("/")
+    for part in split_top_level(expand_str):
+        chain = split_top_level(part, "/")
 
         if chain[0].split("(")[0] == target_location[0]:
             chain = _increment_chain_skip(chain, target_location)
