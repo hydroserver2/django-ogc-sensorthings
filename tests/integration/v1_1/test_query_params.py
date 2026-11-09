@@ -1190,3 +1190,94 @@ class TestJsonComparisonOperands:
     def test_invalid_reversed_in_returns_400(self, client):
         response = client.get("/Datastreams?$filter=5 in properties/depth")
         assert response.status_code == 400
+
+
+class TestGroupedQueryOptions:
+
+    @staticmethod
+    def create_related():
+        things = {name: create_test_thing(name=name) for name in ("A", "B", "C")}
+        locations = {
+            "L1": create_test_location(name="L1", things=[things["A"], things["B"]]),
+            "L2": create_test_location(name="L2", things=[things["A"], things["C"]]),
+        }
+        return things, locations
+
+    @staticmethod
+    def expanded(body, relation="Locations"):
+        return {
+            thing["name"]: ([entity["name"] for entity in thing[relation]], thing.get(f"{relation}@iot.count"))
+            for thing in body["value"]
+        }
+
+    @staticmethod
+    def names(body):
+        return [entity["name"] for entity in body["value"]]
+
+    def test_nested_filter_through_grouping_relation(self, client):
+        things, _ = self.create_related()
+        body = client.get(f"/Things('{things['B'].id}')/Locations?$filter=Things/name eq 'A'&$count=true").json()
+        assert self.names(body) == ["L1"]
+        assert body["@iot.count"] == 1
+
+    def test_reverse_nested_filter_through_grouping_relation(self, client):
+        _, locations = self.create_related()
+        body = client.get(f"/Locations('{locations['L1'].id}')/Things?$filter=Locations/name eq 'L2'").json()
+        assert self.names(body) == ["A"]
+
+    def test_expand_filter_through_grouping_relation(self, client):
+        self.create_related()
+        body = client.get("/Things?$expand=Locations($filter=Things/name eq 'B';$count=true;$orderby=name)").json()
+        assert self.expanded(body) == {"A": (["L1"], 1), "B": (["L1"], 1), "C": ([], 0)}
+
+    def test_filter_matching_several_related_rows_has_no_duplicates(self, client):
+        things, _ = self.create_related()
+        body = client.get(f"/Things('{things['B'].id}')/Locations?$filter=Things/name ne 'Z'&$count=true").json()
+        assert self.names(body) == ["L1"]
+        assert body["@iot.count"] == 1
+
+    def test_expand_count_respects_filter(self, client):
+        self.create_related()
+        body = client.get("/Things?$expand=Locations($filter=name eq 'L1';$count=true)").json()
+        assert self.expanded(body) == {"A": (["L1"], 1), "B": (["L1"], 1), "C": ([], 0)}
+
+    def test_expand_count_ignores_page_size(self, client):
+        self.create_related()
+        body = client.get("/Things?$expand=Locations($top=1;$count=true;$orderby=name)").json()
+        assert self.expanded(body) == {"A": (["L1"], 2), "B": (["L1"], 1), "C": (["L2"], 1)}
+
+    def test_expand_select(self, client):
+        self.create_related()
+        body = client.get("/Things?$expand=Locations($select=name;$orderby=name)").json()
+        assert self.expanded(body) == {"A": (["L1", "L2"], None), "B": (["L1"], None), "C": (["L2"], None)}
+        assert all(set(location) == {"name"} for thing in body["value"] for location in thing["Locations"])
+
+    def test_reverse_nested_count(self, client):
+        _, locations = self.create_related()
+        body = client.get(f"/Locations('{locations['L1'].id}')/Things?$count=true&$orderby=name").json()
+        assert self.names(body) == ["A", "B"]
+        assert body["@iot.count"] == 2
+
+    def test_reverse_nested_pagination(self, client):
+        _, locations = self.create_related()
+        body = client.get(f"/Locations('{locations['L1'].id}')/Things?$top=1&$skip=1&$orderby=name").json()
+        assert self.names(body) == ["B"]
+
+    def test_foreign_key_default_order_is_newest_first(self, client):
+        thing = create_test_thing()
+        ids = [str(create_test_datastream(thing=thing).id) for _ in range(3)]
+        body = client.get(f"/Things('{thing.id}')?$expand=Datastreams").json()
+        assert [datastream["@iot.id"] for datastream in body["Datastreams"]] == sorted(ids, reverse=True)
+
+    def test_many_to_many_default_order_is_newest_first(self, client):
+        thing = create_test_thing()
+        ids = [str(create_test_location(things=[thing]).id) for _ in range(3)]
+        body = client.get(f"/Things('{thing.id}')?$expand=Locations").json()
+        assert [location["@iot.id"] for location in body["Locations"]] == sorted(ids, reverse=True)
+
+    def test_foreign_key_rows_keep_parent_when_interleaved(self, client):
+        things = [create_test_thing(name=name) for name in ("A", "B")]
+        for index, thing in enumerate(things * 2):
+            create_test_datastream(thing=thing, name=f"D{index}")
+        body = client.get("/Things?$expand=Datastreams($orderby=name;$top=1;$count=true)").json()
+        assert self.expanded(body, "Datastreams") == {"A": (["D0"], 2), "B": (["D1"], 2)}
