@@ -94,7 +94,6 @@ class ODataToDjangoQVisitor(AstToDjangoQVisitor):
     def visit_CollectionLambda(self, node: odata_ast.CollectionLambda):
         result = super().visit_CollectionLambda(node)
 
-        # odata-query passes negated=True to Exists, which Django ignores.
         return ~result if isinstance(node.operator, odata_ast.All) else result
 
     def djangofunc_concat(self, *args: odata_ast._Node) -> Concat:  # noqa
@@ -234,6 +233,23 @@ class DjangoBaseBackendAdapter:
             return Absent
 
         return cast(value) if cast else value
+
+    @staticmethod
+    def time_value(begin: datetime | None, end: datetime | None, interval: bool = True) -> str | None:
+        """Format stored begin and end times as an ISO instant or interval."""
+
+        if begin is None or (end is None and not interval):
+            return begin and begin.isoformat()
+
+        return f"{begin.isoformat()}/{(end or begin).isoformat()}"
+
+    @staticmethod
+    def time_fields(name: str, value: str | None) -> dict[str, str | None]:
+        """Split an ISO instant or interval into begin and end model fields."""
+
+        begin, _, end = (value or "").partition("/")
+
+        return {f"{name}_begin": begin or None, f"{name}_end": end or None}
 
     @staticmethod
     def get_pagination_indices(
@@ -952,11 +968,12 @@ class DjangoBackendAdapter(
                 observation_type=self.select_field(select, "observation_type", datastream.observation_type),
                 observed_area=self.select_field(select, "observed_area", datastream.observed_area),
                 phenomenon_time=self.select_field(
-                    select, "phenomenon_time_begin", datastream.phenomenon_time_begin,
-                    cast=lambda v: v and v.isoformat()
+                    select, "phenomenon_time_begin", datastream,
+                    cast=lambda d: self.time_value(d.phenomenon_time_begin, d.phenomenon_time_end)
                 ),
                 result_time=self.select_field(
-                    select, "result_time_begin", datastream.result_time_begin, cast=lambda v: v and v.isoformat()
+                    select, "result_time_begin", datastream,
+                    cast=lambda d: self.time_value(d.result_time_begin, d.result_time_end)
                 ),
                 properties=self.select_field(select, "properties", datastream.properties),
                 thing_id=self.select_field(select, "thing_id", datastream.thing_id),
@@ -985,8 +1002,8 @@ class DjangoBackendAdapter(
                 observation_type=dto.observation_type,
                 properties=dto.properties if dto.properties is not Absent else None,
                 observed_area=dto.observed_area if dto.observed_area is not Absent else None,
-                phenomenon_time_begin=dto.phenomenon_time if dto.phenomenon_time is not Absent else None,
-                result_time_begin=dto.result_time if dto.result_time is not Absent else None,
+                **self.time_fields("phenomenon_time", dto.phenomenon_time),
+                **self.time_fields("result_time", dto.result_time),
                 thing_id=dto.thing_id,
                 sensor_id=dto.sensor_id,
                 observed_property_id=dto.observed_property_id,
@@ -1007,8 +1024,7 @@ class DjangoBackendAdapter(
 
         editable_fields = {
             "name", "description", "unit_of_measurement", "observation_type", "properties",
-            "observed_area", "phenomenon_time_begin", "result_time_begin",
-            "thing_id", "sensor_id", "observed_property_id",
+            "observed_area", "thing_id", "sensor_id", "observed_property_id",
         }
 
         for entity_id, dto in payload.items():
@@ -1016,6 +1032,10 @@ class DjangoBackendAdapter(
                 field: getattr(dto, field) for field in editable_fields
                 if getattr(dto, field, Absent) is not Absent
             }
+
+            for name in ("phenomenon_time", "result_time"):
+                if (value := getattr(dto, name)) is not Absent:
+                    fields.update(self.time_fields(name, value))
 
             if "thing_id" in fields and not Thing.objects.filter(pk=fields["thing_id"]).exists():
                 raise HttpError(400, f"Thing with id {fields['thing_id']} does not exist.")
@@ -1093,8 +1113,8 @@ class DjangoBackendAdapter(
             observation.pk: ObservationDTO(
                 id=self.select_field(select, "id", observation.pk),
                 phenomenon_time=self.select_field(
-                    select, "phenomenon_time_begin", observation.phenomenon_time_begin,
-                    cast=lambda v: v and v.isoformat()
+                    select, "phenomenon_time_begin", observation,
+                    cast=lambda o: self.time_value(o.phenomenon_time_begin, o.phenomenon_time_end, interval=False)
                 ),
                 result=self.select_field(select, "result", observation.result),
                 result_time=self.select_field(
@@ -1102,7 +1122,8 @@ class DjangoBackendAdapter(
                 ),
                 result_quality=self.select_field(select, "result_quality", observation.result_quality),
                 valid_time=self.select_field(
-                    select, "valid_time_begin", observation.valid_time_begin, cast=lambda v: v and v.isoformat()
+                    select, "valid_time_begin", observation,
+                    cast=lambda o: self.time_value(o.valid_time_begin, o.valid_time_end)
                 ),
                 parameters=self.select_field(select, "parameters", observation.parameters),
                 datastream_id=self.select_field(select, "datastream_id", observation.datastream_id),
@@ -1160,13 +1181,13 @@ class DjangoBackendAdapter(
         observations = []
 
         for dto in payload:
-            phenomenon_time = dto.phenomenon_time if dto.phenomenon_time is not Absent else now
+            phenomenon_time = dto.phenomenon_time or now.isoformat()
             observations.append(Observation(
-                phenomenon_time_begin=phenomenon_time,
+                **self.time_fields("phenomenon_time", phenomenon_time),
                 result=dto.result,
-                result_time=dto.result_time if dto.result_time is not Absent else phenomenon_time,
+                result_time=dto.result_time if dto.result_time is not Absent else phenomenon_time.split("/")[0],
                 result_quality=dto.result_quality if dto.result_quality is not Absent else None,
-                valid_time_begin=dto.valid_time if dto.valid_time is not Absent else None,
+                **self.time_fields("valid_time", dto.valid_time),
                 parameters=dto.parameters if dto.parameters is not Absent else None,
                 datastream_id=dto.datastream_id,
                 feature_of_interest_id=(
@@ -1187,15 +1208,21 @@ class DjangoBackendAdapter(
         """Apply partial updates to existing Observation instances."""
 
         editable_fields = {
-            "phenomenon_time_begin", "result", "result_time", "result_quality", "valid_time_begin", "parameters",
-            "datastream_id", "feature_of_interest_id"
+            "result", "result_time", "result_quality", "parameters", "datastream_id", "feature_of_interest_id"
         }
 
         for entity_id, dto in payload.items():
+            if dto.phenomenon_time is None:
+                raise HttpError(400, "phenomenonTime cannot be null.")
+
             fields = {
                 field: getattr(dto, field) for field in editable_fields
                 if getattr(dto, field, Absent) is not Absent
             }
+
+            for name in ("phenomenon_time", "valid_time"):
+                if (value := getattr(dto, name)) is not Absent:
+                    fields.update(self.time_fields(name, value))
 
             if fields:
                 if not Observation.objects.filter(pk=entity_id).update(**fields):

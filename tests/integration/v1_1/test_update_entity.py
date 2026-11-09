@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 import pytest
 from tests.factories.v1_1.django import (
     create_test_thing,
@@ -114,6 +115,93 @@ class TestUpdateObservation:
             {"result": 0.0}
         )
         assert response.status_code == 404
+
+
+class TestUpdateTimeIntervals:
+
+    INTERVAL = "2022-01-01T00:00:00Z/2023-01-01T00:00:00Z"
+    INSTANT = "2022-01-01T00:00:00Z"
+    NEW_BEGIN = datetime(2022, 1, 1, tzinfo=timezone.utc)
+    NEW_END = datetime(2023, 1, 1, tzinfo=timezone.utc)
+    BEGIN = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    END = datetime(2021, 1, 1, tzinfo=timezone.utc)
+
+    def create_observation(self):
+        return create_test_observation(
+            phenomenon_time_begin=self.BEGIN,
+            phenomenon_time_end=self.END,
+            valid_time_begin=self.BEGIN,
+            valid_time_end=self.END,
+        )
+
+    def create_datastream(self):
+        return create_test_datastream(
+            phenomenon_time_begin=self.BEGIN,
+            phenomenon_time_end=self.END,
+            result_time_begin=self.BEGIN,
+            result_time_end=self.END,
+        )
+
+    @staticmethod
+    def times(entity, field):
+        entity.refresh_from_db()
+        return getattr(entity, f"{field}_begin"), getattr(entity, f"{field}_end")
+
+    @pytest.mark.parametrize("field,property_name", [
+        ("phenomenon_time", "phenomenonTime"),
+        ("valid_time", "validTime"),
+    ])
+    def test_observation_interval(self, client, field, property_name):
+        obs = self.create_observation()
+        assert client.patch(f"/Observations('{obs.id}')", {property_name: self.INTERVAL}).status_code == 204
+        assert self.times(obs, field) == (self.NEW_BEGIN, self.NEW_END)
+
+    def test_observation_instant_replaces_interval(self, client):
+        obs = self.create_observation()
+        assert client.patch(f"/Observations('{obs.id}')", {"phenomenonTime": self.INSTANT}).status_code == 204
+        assert self.times(obs, "phenomenon_time") == (self.NEW_BEGIN, None)
+
+    def test_observation_valid_time_can_be_cleared(self, client):
+        obs = self.create_observation()
+        assert client.patch(f"/Observations('{obs.id}')", {"validTime": None}).status_code == 204
+        assert self.times(obs, "valid_time") == (None, None)
+
+    def test_observation_null_phenomenon_time_returns_400(self, client):
+        obs = self.create_observation()
+        response = client.patch(f"/Observations('{obs.id}')", {"phenomenonTime": None})
+        assert response.status_code == 400
+        assert response.json()["detail"] == "phenomenonTime cannot be null."
+        assert self.times(obs, "phenomenon_time") == (self.BEGIN, self.END)
+
+    def test_observation_other_fields_keep_times(self, client):
+        obs = self.create_observation()
+        assert client.patch(f"/Observations('{obs.id}')", {"result": 5.0}).status_code == 204
+        assert self.times(obs, "phenomenon_time") == (self.BEGIN, self.END)
+        assert self.times(obs, "valid_time") == (self.BEGIN, self.END)
+
+    @pytest.mark.parametrize("field,property_name", [
+        ("phenomenon_time", "phenomenonTime"),
+        ("result_time", "resultTime"),
+    ])
+    def test_datastream_interval(self, client, field, property_name):
+        ds = self.create_datastream()
+        assert client.patch(f"/Datastreams('{ds.id}')", {property_name: self.INTERVAL}).status_code == 204
+        assert self.times(ds, field) == (self.NEW_BEGIN, self.NEW_END)
+
+    @pytest.mark.parametrize("field,property_name", [
+        ("phenomenon_time", "phenomenonTime"),
+        ("result_time", "resultTime"),
+    ])
+    def test_datastream_time_can_be_cleared(self, client, field, property_name):
+        ds = self.create_datastream()
+        assert client.patch(f"/Datastreams('{ds.id}')", {property_name: None}).status_code == 204
+        assert self.times(ds, field) == (None, None)
+
+    def test_datastream_other_fields_keep_times(self, client):
+        ds = self.create_datastream()
+        assert client.patch(f"/Datastreams('{ds.id}')", {"name": "Updated"}).status_code == 204
+        assert self.times(ds, "phenomenon_time") == (self.BEGIN, self.END)
+        assert self.times(ds, "result_time") == (self.BEGIN, self.END)
 
 
 class TestUpdateSensor:

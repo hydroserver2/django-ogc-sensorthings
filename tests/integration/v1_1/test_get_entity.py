@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 import pytest
 from tests.factories.v1_1.django import (
     create_test_thing,
@@ -141,3 +142,62 @@ class TestGetObservationEntity:
         body = client.get(f"/Observations('{obs.id}')").json()
         assert "Datastream@iot.navigationLink" in body
         assert "FeatureOfInterest@iot.navigationLink" in body
+
+
+class TestTimeIntervals:
+
+    BEGIN = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    END = datetime(2021, 1, 1, tzinfo=timezone.utc)
+    INSTANT = "2020-01-01T00:00:00+00:00"
+    INTERVAL = "2020-01-01T00:00:00+00:00/2021-01-01T00:00:00+00:00"
+
+    def test_observation_valid_time(self, client):
+        obs = create_test_observation(valid_time_begin=self.BEGIN, valid_time_end=self.END)
+        assert client.get(f"/Observations('{obs.id}')").json()["validTime"] == self.INTERVAL
+
+    def test_observation_valid_time_without_end_is_zero_length(self, client):
+        obs = create_test_observation(valid_time_begin=self.BEGIN)
+        body = client.get(f"/Observations('{obs.id}')").json()
+        assert body["validTime"] == f"{self.INSTANT}/{self.INSTANT}"
+
+    def test_observation_without_valid_time(self, client):
+        obs = create_test_observation()
+        assert client.get(f"/Observations('{obs.id}')").json().get("validTime") is None
+
+    def test_observation_phenomenon_time_interval(self, client):
+        obs = create_test_observation(phenomenon_time_begin=self.BEGIN, phenomenon_time_end=self.END)
+        assert client.get(f"/Observations('{obs.id}')").json()["phenomenonTime"] == self.INTERVAL
+
+    def test_observation_phenomenon_time_instant(self, client):
+        obs = create_test_observation(phenomenon_time_begin=self.BEGIN)
+        assert client.get(f"/Observations('{obs.id}')").json()["phenomenonTime"] == self.INSTANT
+
+    @pytest.mark.parametrize("field,property_name", [
+        ("phenomenon_time", "phenomenonTime"),
+        ("result_time", "resultTime"),
+    ])
+    def test_datastream_interval(self, client, field, property_name):
+        ds = create_test_datastream(**{f"{field}_begin": self.BEGIN, f"{field}_end": self.END})
+        assert client.get(f"/Datastreams('{ds.id}')").json()[property_name] == self.INTERVAL
+
+    def test_select_time_field(self, client):
+        obs = create_test_observation(valid_time_begin=self.BEGIN, valid_time_end=self.END)
+        body = client.get(f"/Observations('{obs.id}')?$select=validTime").json()
+        assert body == {"validTime": self.INTERVAL}
+
+    def test_data_array(self, client):
+        create_test_observation(valid_time_begin=self.BEGIN, valid_time_end=self.END)
+        body = client.get("/Observations?$resultFormat=dataArray&$select=validTime").json()
+        assert body["value"][0]["dataArray"] == [[self.INTERVAL]]
+
+    def test_order_by_valid_time(self, client):
+        ds = create_test_datastream()
+        for result, year in ((1.0, 2022), (2.0, 2020), (3.0, 2021)):
+            create_test_observation(
+                result=result,
+                datastream=ds,
+                valid_time_begin=datetime(year, 1, 1, tzinfo=timezone.utc),
+                valid_time_end=datetime(year, 6, 1, tzinfo=timezone.utc),
+            )
+        body = client.get("/Observations?$orderby=validTime desc").json()
+        assert [obs["result"] for obs in body["value"]] == [1.0, 3.0, 2.0]

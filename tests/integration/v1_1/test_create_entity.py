@@ -1,6 +1,7 @@
+from datetime import datetime, timezone
 import pytest
 from sensorthings.versions.v1_1.backends.django.models import (
-    Datastream, Thing, Location
+    Datastream, Thing, Location, Observation
 )
 from tests.factories.v1_1.django import (
     create_test_thing,
@@ -261,3 +262,99 @@ class TestCreateObservation:
         client.post("/Observations", payload)
         body = client.get(f"/Datastreams('{ds.id}')/Observations").json()
         assert any(o["result"] == 55.0 for o in body["value"])
+
+
+class TestCreateTimeIntervals:
+
+    INSTANT = "2020-01-01T00:00:00Z"
+    INTERVAL = "2020-01-01T00:00:00Z/2021-01-01T00:00:00Z"
+    BEGIN = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    END = datetime(2021, 1, 1, tzinfo=timezone.utc)
+
+    @staticmethod
+    def observation_payload(**fields):
+        return {
+            "phenomenonTime": TestCreateTimeIntervals.INSTANT,
+            "result": 1.0,
+            "Datastream": {"@iot.id": str(create_test_datastream().id)},
+            "FeatureOfInterest": {"@iot.id": str(create_test_feature_of_interest().id)},
+            **fields,
+        }
+
+    @staticmethod
+    def datastream_payload(**fields):
+        return {
+            "name": "Interval Datastream",
+            "description": "...",
+            "unitOfMeasurement": UNIT_OF_MEASUREMENT,
+            "observationType": OM_MEASUREMENT,
+            "Thing": {"@iot.id": str(create_test_thing().id)},
+            "Sensor": {"@iot.id": str(create_test_sensor().id)},
+            "ObservedProperty": {"@iot.id": str(create_test_observed_property().id)},
+            **fields,
+        }
+
+    def test_observation_valid_time(self, client):
+        response = client.post("/Observations", self.observation_payload(validTime=self.INTERVAL))
+        assert response.status_code == 201
+        observation = Observation.objects.get()
+        assert (observation.valid_time_begin, observation.valid_time_end) == (self.BEGIN, self.END)
+
+    def test_observation_phenomenon_time_interval_defaults_result_time_to_start(self, client):
+        response = client.post("/Observations", self.observation_payload(phenomenonTime=self.INTERVAL))
+        assert response.status_code == 201
+        observation = Observation.objects.get()
+        assert (observation.phenomenon_time_begin, observation.phenomenon_time_end) == (self.BEGIN, self.END)
+        assert observation.result_time == self.BEGIN
+
+    def test_observation_phenomenon_time_instant(self, client):
+        response = client.post("/Observations", self.observation_payload())
+        assert response.status_code == 201
+        observation = Observation.objects.get()
+        assert (observation.phenomenon_time_begin, observation.phenomenon_time_end) == (self.BEGIN, None)
+
+    def test_observation_omitted_phenomenon_time_uses_server_time(self, client):
+        payload = self.observation_payload()
+        del payload["phenomenonTime"]
+        assert client.post("/Observations", payload).status_code == 201
+        assert Observation.objects.get().phenomenon_time_begin is not None
+
+    def test_observation_null_phenomenon_time_uses_server_time(self, client):
+        assert client.post("/Observations", self.observation_payload(phenomenonTime=None)).status_code == 201
+        assert Observation.objects.get().phenomenon_time_begin is not None
+
+    @pytest.mark.parametrize("field,property_name", [
+        ("phenomenon_time", "phenomenonTime"),
+        ("result_time", "resultTime"),
+    ])
+    def test_datastream_interval(self, client, field, property_name):
+        response = client.post("/Datastreams", self.datastream_payload(**{property_name: self.INTERVAL}))
+        assert response.status_code == 201
+        datastream = Datastream.objects.get(name="Interval Datastream")
+        assert (getattr(datastream, f"{field}_begin"), getattr(datastream, f"{field}_end")) == (self.BEGIN, self.END)
+
+    def test_deep_insert(self, client):
+        foi = create_test_feature_of_interest()
+        response = client.post("/Datastreams", self.datastream_payload(
+            phenomenonTime=self.INTERVAL,
+            Observations=[{
+                "phenomenonTime": self.INTERVAL,
+                "validTime": self.INTERVAL,
+                "result": 1.0,
+                "FeatureOfInterest": {"@iot.id": str(foi.id)},
+            }],
+        ))
+        assert response.status_code == 201
+        assert Datastream.objects.get(name="Interval Datastream").phenomenon_time_end == self.END
+        assert Observation.objects.get().valid_time_end == self.END
+
+    def test_data_array(self, client):
+        ds = create_test_datastream()
+        foi = create_test_feature_of_interest()
+        response = client.post("/CreateObservations", [{
+            "Datastream": {"@iot.id": str(ds.id)},
+            "components": ["phenomenonTime", "result", "FeatureOfInterest/id"],
+            "dataArray": [[self.INTERVAL, 1.0, str(foi.id)]],
+        }])
+        assert response.status_code == 201
+        assert Observation.objects.get().phenomenon_time_end == self.END
