@@ -1,6 +1,5 @@
 from functools import reduce
 from typing import Any, Callable
-from itertools import groupby
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from asgiref.sync import sync_to_async
@@ -11,7 +10,7 @@ from odata_query.django.django_q import AstToDjangoQVisitor
 from odata_query.django.django_q_ext import NotEqual
 from odata_query.exceptions import ODataException, TypeException
 from ninja.errors import HttpError
-from django.core.exceptions import FieldDoesNotExist, FieldError
+from django.core.exceptions import EmptyResultSet, FieldDoesNotExist, FieldError
 from django.http import HttpRequest
 from django.db import transaction as django_transaction
 from django.db.models import (QuerySet, Manager, Count, F, Window, Model, Q, Case, When, Value, FloatField, TextField,
@@ -30,11 +29,6 @@ from .models import (Thing, Location, HistoricalLocation, Sensor, ObservedProper
                      FeatureOfInterest)
 from ..base import BaseBackendAdapter
 
-
-ODATA_FIELD_REMAP = {
-    "phenomenon_time": "phenomenon_time_begin",
-    "valid_time": "valid_time_begin",
-}
 
 JSON_NUMBER_PATTERN = r"^-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$"
 JSON_DATETIME_PATTERN = (
@@ -112,13 +106,24 @@ class ODataToDjangoQVisitor(AstToDjangoQVisitor):
         """Build a Django field path from an OData identifier or attribute."""
 
         if isinstance(node, odata_ast.Identifier):
-            return ODATA_FIELD_REMAP.get(to_snake(node.name), to_snake(node.name))
+            return self._column_name(None, node.name)
 
         owner = self._field_path(node.owner)
         if self._json_keys(owner) is not None:
             return owner + "__" + node.attr
 
-        return owner + "__" + ODATA_FIELD_REMAP.get(to_snake(node.attr), to_snake(node.attr))
+        return owner + "__" + self._column_name(owner, node.attr)
+
+    def _column_name(self, owner: str | None, name: str) -> str:
+        """Return the column for an OData property, using the begin column of a time interval."""
+
+        model = self.root_model
+        for part in owner.split("__") if owner else []:
+            model = model._meta.get_field(part).related_model if model else None  # noqa
+
+        name = to_snake(name)
+
+        return f"{name}_begin" if hasattr(model, f"{name}_begin") else name
 
     def _json_keys(self, path: str) -> list[str] | None:
         """Return the keys below a JSONField in a Django field path, or None if it doesn't reach one."""
@@ -165,6 +170,16 @@ class ODataToDjangoQVisitor(AstToDjangoQVisitor):
 
     def _compare_json(self, path: str, comparator: odata_ast._Node, literal: odata_ast._Node):  # noqa
         """Compare a value inside a JSONField with a literal."""
+
+        if isinstance(comparator, odata_ast.In) and isinstance(literal, odata_ast.List):
+            return reduce(Q.__or__, (self._compare_json(path, odata_ast.Eq(), item) for item in literal.val))
+        if isinstance(literal, odata_ast.DateTime):
+            return self.visit(comparator)(
+                self._json_value(path, "datetime"),
+                Cast(Value(literal.py_val, DateTimeField()), DateTimeField()),
+            )
+        if isinstance(literal, (odata_ast.Date, odata_ast.Time, odata_ast.GUID)):
+            literal = odata_ast.String(literal.val)
 
         is_equality = isinstance(comparator, (odata_ast.Eq, odata_ast.NotEq))
         allowed = (odata_ast.String, odata_ast.Integer, odata_ast.Float)
@@ -286,13 +301,23 @@ class DjangoBaseBackendAdapter:
         try:
             q = self.build_entity_filter_arg(model=manager.model, filters=filters)
             if q is not None:
+                if group_by is not None and group_by[0] != "pk" and (
+                    manager.model._meta.get_field(group_by[0]).many_to_many  # noqa
+                ):
+                    # A filter on the grouping relation must not share its join.
+                    q = Q(pk__in=manager.model._default_manager.filter(q).values("pk"))  # noqa
                 manager = manager.filter(q)
+                manager.query.get_compiler(manager.db).as_sql()  # Surfaces errors Django raises at compile time.
+        except EmptyResultSet:
+            pass
         except ODataException as e:
             raise InvalidQueryError(f"Invalid $filter: {e}") from e
         except (FieldError, FieldDoesNotExist) as e:
-            raise InvalidQueryError("Invalid $filter: unknown property") from e
+            raise InvalidQueryError("Invalid $filter: unknown property or incompatible types") from e
         except TypeError as e:
             raise InvalidQueryError("Invalid $filter: expression must be a boolean condition") from e
+        except ValueError as e:
+            raise InvalidQueryError("Invalid $filter: invalid function argument") from e
 
         lower_page_index, upper_page_index = self.get_pagination_indices(top, skip)
 
@@ -331,6 +356,7 @@ class DjangoBaseBackendAdapter:
             )
 
             manager = manager.annotate(
+                group_id=F(group_by[0]),
                 row_number=Window(
                     expression=RowNumber(),
                     partition_by=[F(group_by[0])],
@@ -340,19 +366,9 @@ class DjangoBaseBackendAdapter:
 
             queryset = manager.only(*select) if select is not None else manager.all()
 
-            if queryset.model._meta.get_field(group_by[0]).many_to_many:  # noqa
-                querysets = defaultdict(list)
-                for obj in queryset:
-                    for entity in getattr(obj, group_by[0]).all():
-                        querysets[entity.pk].append(obj)
-                querysets = dict(querysets)
-            else:
-                querysets = {
-                    entity.pk: list(group)
-                    for entity, group in groupby(
-                        queryset, key=lambda o: getattr(o, group_by[0])
-                    )
-                }
+            querysets = defaultdict(list)
+            for obj in queryset:
+                querysets[obj.group_id].append(obj)
 
             collections = {
                 entity_id: CollectionDTO(
@@ -411,7 +427,7 @@ class DjangoBackendAdapter(
             manager = manager.filter(pk__in=group_by[1])
         elif group_by and group_by[0] == "location":
             group_by = ("locations", group_by[1],)
-            manager = manager.prefetch_related("locations").filter(locations__in=group_by[1])
+            manager = manager.filter(locations__in=group_by[1])
 
         if not select:
             select = []
@@ -517,10 +533,10 @@ class DjangoBackendAdapter(
             manager = manager.filter(pk__in=group_by[1])
         elif group_by and group_by[0] == "thing":
             group_by = ("things", group_by[1],)
-            manager = manager.prefetch_related("things").filter(things__in=group_by[1])
+            manager = manager.filter(things__in=group_by[1])
         elif group_by and group_by[0] == "historical_location":
             group_by = ("historical_locations", group_by[1],)
-            manager = manager.prefetch_related("historical_locations").filter(historical_locations__in=group_by[1])
+            manager = manager.filter(historical_locations__in=group_by[1])
 
         if not select:
             select = []
@@ -631,9 +647,9 @@ class DjangoBackendAdapter(
         elif group_by and group_by[0] == "thing":
             group_by = ("thing", group_by[1],)
             manager = manager.filter(thing__in=group_by[1])
-        elif group_by and group_by[0] == "locations":
+        elif group_by and group_by[0] in ("location", "locations"):
             group_by = ("locations", group_by[1],)
-            manager = manager.prefetch_related("locations").filter(locations__in=group_by[1])
+            manager = manager.filter(locations__in=group_by[1])
 
         if not select:
             select = []

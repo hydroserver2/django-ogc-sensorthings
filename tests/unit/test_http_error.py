@@ -17,6 +17,9 @@ def test_http_error_passes_through():
 @pytest.mark.parametrize("exception,status_code", [
     (PermissionError(), 403),
     (LookupError(), 404),
+    (type("EntityNotFound", (LookupError,), {})(), 404),
+    (KeyError("internal detail"), 500),
+    (IndexError("internal detail"), 500),
     (NotImplementedError(), 501),
     (ValueError("internal detail"), 500),
     (TypeError("internal detail"), 500),

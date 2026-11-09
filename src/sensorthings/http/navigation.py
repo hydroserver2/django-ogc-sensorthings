@@ -1,3 +1,4 @@
+from urllib.parse import quote
 from sensorthings.core import BaseSettings, BaseProtocol
 from .validators import split_top_level
 
@@ -139,7 +140,7 @@ def build_next_link(
         }
 
     parts = [
-        f"{key}={item}"
+        f"""{key}={quote(str(item), safe="$(),;'/=:")}"""
         for key, value in next_link_query_params.items()
         if value is not None
         for item in (value if isinstance(value, list) else [value])

@@ -127,7 +127,7 @@ class SensorThingsService:
         # ------------------------------------------------------------------
 
         validated_select = validate_select(entity_type, select)
-        validated_expand = validate_expand(entity_type, expand)
+        validated_expand = validate_expand(entity_type, expand, self.settings.MAX_TOP)
         validated_filters = validate_filters(filters)
         validated_orderby = validate_orderby(entity_type, self.protocol, orderby)
 

@@ -210,6 +210,7 @@ def split_top_level(
 def validate_expand(
     entity_type: EntityType,
     expand: str | None = None,
+    max_top: int = 100,
 ) -> dict[str, dict]:
     """
     Parse and validate an $expand clause for a given entity type.
@@ -240,17 +241,25 @@ def validate_expand(
             option, _, value = param_token.partition("=")
             argument = to_snake(option.lstrip("$"))
 
-            if argument not in EXPAND_OPTIONS:
+            if not option.startswith("$") or argument not in EXPAND_OPTIONS:
                 raise InvalidQueryError(f"Invalid option in $expand: {option}")
 
             params["filters" if argument == "filter" else argument] = value
 
-        for argument in ("top", "skip"):
+        for argument, limit in (("top", max_top), ("skip", float("inf"))):
             if argument in params:
                 try:
-                    params[argument] = int(params[argument])
+                    value = int(params[argument])
                 except ValueError:
+                    value = -1
+                if not 0 <= value <= limit:
                     raise InvalidQueryError(f"Invalid ${argument} in $expand: '{params[argument]}'")
+                params[argument] = value
+
+        if "count" in params:
+            if params["count"] not in ("true", "false"):
+                raise InvalidQueryError(f"Invalid $count in $expand: '{params['count']}'")
+            params["count"] = params["count"] == "true"
 
         if len(nested_tokens) > 1:
             params["expand"] = "/".join(nested_tokens[1:])

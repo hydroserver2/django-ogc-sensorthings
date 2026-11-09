@@ -170,7 +170,7 @@ Adapter methods signal HTTP errors by raising one of these exceptions:
 | `PermissionError` | 403 |
 | `LookupError` | 404 |
 | `NotImplementedError` | 501 |
-| Any other exception, including `ValueError` and `TypeError` | 500 |
+| Any other exception, including `ValueError`, `TypeError`, `KeyError`, and `IndexError` | 500 |
 
 To reject a request as a client error, raise `HttpError(400, "...")`. The message is returned to the client.
 

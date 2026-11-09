@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from urllib.parse import quote
 import pytest
 from sensorthings.versions.v1_1.backends.django.adapter import DjangoBackendAdapter
 from tests.factories.v1_1.django import (
@@ -500,7 +501,6 @@ class TestJsonPropertyFilter:
     @pytest.mark.parametrize("filter_option,message", [
         ("properties/active gt true", "Cannot apply 'Gt' to 'Boolean'"),
         ("properties/count gt null", "Cannot apply 'Gt' to 'Null'"),
-        ("properties/timeUnit eq 2020-01-01T00:00:00Z", "Cannot apply 'Eq' to 'DateTime'"),
         ("bogus/key eq 1", "unknown property"),
     ])
     def test_invalid_filter_returns_400(self, client, filter_option, message):
@@ -943,3 +943,173 @@ class TestToOneExpand:
             (thing["name"], [ds["name"] for ds in thing["Datastreams"]], thing["Datastreams@iot.count"])
             for thing in body["value"]
         ] == [("T0", ["D0", "D3"], 2), ("T1", ["D1"], 1), ("T2", ["D2"], 1)]
+
+
+class TestInvalidFilterExpressions:
+
+    @pytest.mark.parametrize("filter_option,message", [
+        ("year(name) eq 2020", "Invalid $filter: invalid function argument"),
+        ("name add 1 gt 2", "Invalid $filter: unknown property or incompatible types"),
+        ("name/a/b eq 1", "Invalid $filter: unknown property or incompatible types"),
+    ])
+    def test_returns_400(self, client, filter_option, message):
+        response = client.get(f"/Things?$filter={filter_option}")
+        assert response.status_code == 400
+        assert response.json()["detail"] == message
+
+
+class TestJsonLiteralFilter:
+
+    INSTANT = "2024-06-01T00:00:00Z"
+
+    @staticmethod
+    def create_datastreams():
+        create_test_datastream(name="A", properties={"depth": 5, "code": "x", "day": "2024-06-01", "at": "2024-06-01T00:00:00Z"})
+        create_test_datastream(name="B", properties={"depth": 9, "code": "y", "day": "2023-06-01", "at": "2024-06-01T02:00:00+02:00"})
+        create_test_datastream(name="C", properties={"depth": 7, "code": "z", "day": "2025-06-01", "at": "2025-06-01T00:00:00Z"})
+        create_test_datastream(name="D", properties={"at": "not-a-date"})
+
+    @pytest.mark.parametrize("filter_option,expected", [
+        ("properties/depth in (5,9)", ["A", "B"]),
+        ("properties/code in ('y','z')", ["B", "C"]),
+        ("properties/depth in (5,null)", ["A", "D"]),
+        (f"properties/at eq {INSTANT}", ["A", "B"]),
+        (f"properties/at ne {INSTANT}", ["C"]),
+        (f"properties/at gt {INSTANT}", ["C"]),
+        (f"properties/at ge {INSTANT}", ["A", "B", "C"]),
+        (f"properties/at lt {INSTANT}", []),
+        ("properties/day gt 2024-01-01", ["A", "C"]),
+        ("properties/day eq 2024-06-01", ["A"]),
+    ])
+    def test_filter(self, client, filter_option, expected):
+        self.create_datastreams()
+        response = client.get(f"/Datastreams?$filter={filter_option}")
+        assert response.status_code == 200
+        assert sorted(ds["name"] for ds in response.json()["value"]) == expected
+
+
+class TestManyToManyGrouping:
+
+    @staticmethod
+    def create_things():
+        first, second, third = (create_test_thing(name=name) for name in ("A", "B", "C"))
+        create_test_location(name="L1", things=[first, second])
+        create_test_location(name="L2", things=[first, third])
+        return first, second, third
+
+    @staticmethod
+    def expanded(body):
+        return {thing["name"]: [location["name"] for location in thing["Locations"]] for thing in body["value"]}
+
+    def test_expand_has_no_duplicates(self, client):
+        self.create_things()
+        body = client.get("/Things?$expand=Locations($orderby=name)").json()
+        assert self.expanded(body) == {"A": ["L1", "L2"], "B": ["L1"], "C": ["L2"]}
+
+    def test_expand_paginates_each_parent(self, client):
+        self.create_things()
+        body = client.get("/Things?$expand=Locations($orderby=name;$skip=1)").json()
+        assert self.expanded(body) == {"A": ["L2"], "B": [], "C": []}
+
+    def test_nested_path_has_no_duplicates(self, client):
+        _, second, _ = self.create_things()
+        body = client.get(f"/Things('{second.id}')/Locations").json()
+        assert [location["name"] for location in body["value"]] == ["L1"]
+
+    def test_expand_historical_locations(self, client):
+        thing = create_test_thing()
+        location = create_test_location(name="L1", things=[thing])
+        historical_location = create_test_historical_location(thing=thing, locations=[location])
+        response = client.get("/Locations?$expand=HistoricalLocations")
+        assert response.status_code == 200
+        assert [
+            entity["@iot.id"] for entity in response.json()["value"][0]["HistoricalLocations"]
+        ] == [str(historical_location.id)]
+
+    def test_nested_historical_locations(self, client):
+        thing = create_test_thing()
+        location = create_test_location(name="L1", things=[thing])
+        historical_location = create_test_historical_location(thing=thing, locations=[location])
+        body = client.get(f"/Locations('{location.id}')/HistoricalLocations").json()
+        assert [entity["@iot.id"] for entity in body["value"]] == [str(historical_location.id)]
+
+
+class TestDatastreamResultTime:
+
+    @staticmethod
+    def create_datastreams():
+        create_test_datastream(name="Old", result_time_begin=datetime(2019, 1, 1, tzinfo=timezone.utc))
+        create_test_datastream(name="New", result_time_begin=datetime(2021, 1, 1, tzinfo=timezone.utc))
+
+    def test_filter(self, client):
+        self.create_datastreams()
+        response = client.get("/Datastreams?$filter=resultTime gt 2020-01-01T00:00:00Z")
+        assert response.status_code == 200
+        assert [ds["name"] for ds in response.json()["value"]] == ["New"]
+
+    def test_orderby(self, client):
+        self.create_datastreams()
+        response = client.get("/Datastreams?$orderby=resultTime asc")
+        assert response.status_code == 200
+        assert [ds["name"] for ds in response.json()["value"]] == ["Old", "New"]
+
+    def test_observation_result_time_is_unchanged(self, client):
+        create_test_observation(result=1.0, result_time=datetime(2019, 1, 1, tzinfo=timezone.utc))
+        create_test_observation(result=2.0, result_time=datetime(2021, 1, 1, tzinfo=timezone.utc))
+        body = client.get("/Observations?$filter=resultTime gt 2020-01-01T00:00:00Z").json()
+        assert [observation["result"] for observation in body["value"]] == [2.0]
+
+
+class TestExpandOptionValues:
+
+    @pytest.mark.parametrize("options,message", [
+        ("$top=-1", "Invalid $top in $expand: '-1'"),
+        ("$top=101", "Invalid $top in $expand: '101'"),
+        ("$skip=-1", "Invalid $skip in $expand: '-1'"),
+        ("$count=maybe", "Invalid $count in $expand: 'maybe'"),
+        ("top=1", "Invalid option in $expand: top"),
+        ("expand=Observations($top=1)", "Invalid option in $expand: expand"),
+    ])
+    def test_invalid_option_returns_400(self, client, options, message):
+        response = client.get(f"/Things?$expand=Datastreams({options})")
+        assert response.status_code == 400
+        assert response.json()["detail"] == message
+
+    def test_top_at_limit_is_allowed(self, client):
+        create_test_thing()
+        assert client.get("/Things?$expand=Datastreams($top=100)").status_code == 200
+
+    @pytest.mark.parametrize("value,expected", [("true", True), ("false", False)])
+    def test_count(self, client, value, expected):
+        create_test_datastream()
+        body = client.get(f"/Things?$expand=Datastreams($count={value})").json()
+        assert ("Datastreams@iot.count" in body["value"][0]) is expected
+
+
+class TestNextLinkEncoding:
+
+    @staticmethod
+    def follow(client, link):
+        return client.get(link.split("/v1.1", 1)[1])
+
+    @pytest.mark.parametrize("literal", ["a&b", "a+b", "a#b", "a%b"])
+    def test_collection_next_link(self, client, literal):
+        for name in ("A", "B"):
+            create_test_thing(name=name)
+        body = client.get("/Things", data={"$filter": f"name ne '{literal}'", "$orderby": "name", "$top": 1}).json()
+        assert quote(literal) in body["@iot.nextLink"]
+        next_page = self.follow(client, body["@iot.nextLink"])
+        assert next_page.status_code == 200
+        assert [thing["name"] for thing in next_page.json()["value"]] == ["B"]
+
+    @pytest.mark.parametrize("literal", ["a&b", "a+b", "a#b", "a%b"])
+    def test_expand_next_link(self, client, literal):
+        thing = create_test_thing()
+        for name in ("A", "B"):
+            create_test_datastream(thing=thing, name=name)
+        expand = f"Datastreams($top=1;$orderby=name;$filter=name ne '{literal}')"
+        body = client.get(f"/Things('{thing.id}')", data={"$expand": expand}).json()
+        assert quote(literal) in body["Datastreams@iot.nextLink"]
+        next_page = self.follow(client, body["Datastreams@iot.nextLink"])
+        assert next_page.status_code == 200
+        assert [ds["name"] for ds in next_page.json()["Datastreams"]] == ["B"]

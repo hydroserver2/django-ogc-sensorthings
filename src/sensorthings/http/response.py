@@ -56,7 +56,7 @@ def http_error(exception: Exception) -> HttpError:
         return HttpError(400, str(exception))
     elif isinstance(exception, PermissionError):
         return HttpError(403, "Permission denied")
-    elif isinstance(exception, LookupError):
+    elif isinstance(exception, LookupError) and not isinstance(exception, (KeyError, IndexError)):
         return HttpError(404, "Not found")
     elif isinstance(exception, NotImplementedError):
         return HttpError(501, "Not implemented")
