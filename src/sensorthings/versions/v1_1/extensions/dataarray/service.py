@@ -2,6 +2,7 @@ from itertools import groupby
 from typing import Literal
 from pydantic.alias_generators import to_camel, to_snake
 from django.http import HttpRequest
+from ninja.errors import HttpError
 from sensorthings.http import validate_select, build_self_link
 from sensorthings.types import EntityType
 from sensorthings.versions.v1_1 import STA, app_settings
@@ -24,9 +25,6 @@ class DataArrayServiceMixin:
         next_link_target: list[str] | None = None,
         result_format: Literal["dataArray"] | None = None
     ) -> dict:
-        if result_format == "dataArray" and next_link_target:
-            raise ValueError("$resultFormat is not supported inside $expand elements")
-
         if entity_type.name == "Observation" and result_format == "dataArray":
             select_extra = ["datastream_id"]
             orderby = f"Datastream/id desc,{orderby}" if orderby else "Datastream/id desc"
@@ -121,7 +119,8 @@ class DataArrayServiceMixin:
 
         total_rows = sum(len(item.data_array) for item in payload)
         if total_rows > app_settings.MAX_POST_DATA_ARRAY_OBSERVATIONS:
-            raise ValueError(
+            raise HttpError(
+                400,
                 f"Request contains {total_rows} observations; "
                 f"maximum allowed is {app_settings.MAX_POST_DATA_ARRAY_OBSERVATIONS}."
             )

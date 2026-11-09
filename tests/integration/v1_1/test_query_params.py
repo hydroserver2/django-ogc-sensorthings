@@ -1,4 +1,6 @@
+from datetime import datetime, timezone
 import pytest
+from sensorthings.versions.v1_1.backends.django.adapter import DjangoBackendAdapter
 from tests.factories.v1_1.django import (
     create_test_thing,
     create_test_datastream,
@@ -313,3 +315,108 @@ class TestNestedExpandNextLink:
         body = self.get_thing(client, thing, f"Datastreams/{self.INNER_OBSERVATIONS}")
         page_two = self.assert_next_page(client, body["Datastreams"][0])
         assert self.results(page_two["Datastreams"][0]) == [2.0]
+
+
+class TestNotEqualFilter:
+
+    @staticmethod
+    def thing_names(client, filter_option):
+        response = client.get(f"/Things?$filter={filter_option}")
+        assert response.status_code == 200
+        return [thing["name"] for thing in response.json()["value"]]
+
+    @pytest.mark.parametrize("filter_option,expected", [
+        ("name ne 'Longer'", ["Alpha"]),
+        ("not (name ne 'Longer')", ["Longer"]),
+        ("name ne 'Alpha' and name ne 'Longer'", []),
+        ("length(name) ne 5", ["Longer"]),
+    ])
+    def test_string_comparisons(self, client, filter_option, expected):
+        create_test_thing(name="Alpha")
+        create_test_thing(name="Longer")
+        assert self.thing_names(client, filter_option) == expected
+
+    def test_numeric_comparison(self, client):
+        ds = create_test_datastream()
+        create_test_observation(result=1.0, datastream=ds)
+        create_test_observation(result=2.0, datastream=ds)
+        body = client.get("/Observations?$filter=result ne 1.0").json()
+        assert [obs["result"] for obs in body["value"]] == [2.0]
+
+    def test_datetime_comparison(self, client):
+        ds = create_test_datastream()
+        create_test_observation(
+            result=1.0, datastream=ds, phenomenon_time_begin=datetime(2020, 1, 1, tzinfo=timezone.utc)
+        )
+        create_test_observation(
+            result=2.0, datastream=ds, phenomenon_time_begin=datetime(2021, 1, 1, tzinfo=timezone.utc)
+        )
+        body = client.get("/Observations?$filter=phenomenonTime ne 2020-01-01T00:00:00Z").json()
+        assert [obs["result"] for obs in body["value"]] == [2.0]
+
+    def test_related_entity_comparison(self, client):
+        create_test_datastream(name="Keep", thing=create_test_thing(name="Alpha"))
+        create_test_datastream(name="Drop", thing=create_test_thing(name="Beta"))
+        body = client.get("/Datastreams?$filter=Thing/name ne 'Beta'").json()
+        assert [ds["name"] for ds in body["value"]] == ["Keep"]
+
+    def test_on_nested_path(self, client):
+        ds = create_test_datastream()
+        create_test_observation(result=1.0, datastream=ds)
+        create_test_observation(result=2.0, datastream=ds)
+        body = client.get(f"/Datastreams('{ds.id}')/Observations?$filter=result ne 1.0").json()
+        assert [obs["result"] for obs in body["value"]] == [2.0]
+
+    def test_inside_expand(self, client):
+        thing = create_test_thing()
+        create_test_datastream(thing=thing, name="Keep")
+        create_test_datastream(thing=thing, name="Drop")
+        body = client.get(f"/Things('{thing.id}')?$expand=Datastreams($filter=name ne 'Drop')").json()
+        assert [ds["name"] for ds in body["Datastreams"]] == ["Keep"]
+
+
+class TestInvalidQueryOptions:
+
+    @pytest.mark.parametrize("path,message", [
+        ("/Things?$filter=name eq", "Invalid $filter"),
+        ("/Things?$filter=nofunc(name) eq 1", "Unknown function: 'nofunc'"),
+        ("/Things?$filter=bogus eq 'x'", "Invalid $filter: unknown property"),
+        ("/Things?$filter=name/foo eq 'x'", "Invalid $filter: unknown property"),
+        ("/Things?$filter=name", "Invalid $filter: expression must be a boolean condition"),
+        ("/Things?$filter=name lt null", "Cannot apply 'Lt' to 'null'"),
+        ("/Things?$select=bogus", "Invalid fields in $select: bogus"),
+        ("/Things?$orderby=bogus", "Invalid $orderby field path: 'bogus'"),
+        ("/Things?$orderby=name sideways", "Invalid $orderby direction: 'name sideways'"),
+        ("/Things?$expand=Bogus", "Invalid entity in $expand: Bogus"),
+        ("/Things?$expand=Datastreams(", "must be balanced"),
+        ("/Things('{id}')?$expand=Datastreams($bogus=1)", "Invalid option in $expand: $bogus"),
+        ("/Things('{id}')?$expand=Datastreams($resultFormat=dataArray)", "Invalid option in $expand: $resultFormat"),
+        ("/Things('{id}')?$expand=Datastreams($top=abc)", "Invalid $top in $expand: 'abc'"),
+        ("/Things('{id}')?$expand=Datastreams($skip=abc)", "Invalid $skip in $expand: 'abc'"),
+        ("/Things('{id}')?$expand=Datastreams($filter=name eq)", "Invalid $filter"),
+        ("/Things('{id}')?$expand=Datastreams($filter=bogus eq 'x')", "Invalid $filter: unknown property"),
+        ("/Things('{id}')/name?$top=1", "Query options are not allowed"),
+    ])
+    def test_returns_400_with_message(self, client, path, message):
+        thing = create_test_thing()
+        response = client.get(path.format(id=thing.id))
+        assert response.status_code == 400
+        assert message in response.json()["detail"]
+
+    def test_unknown_property_does_not_list_model_fields(self, client):
+        detail = client.get("/Things?$filter=bogus eq 'x'").json()["detail"]
+        assert "Choices" not in detail
+        assert "description" not in detail
+
+
+class TestBackendErrors:
+
+    @pytest.mark.parametrize("exception", [ValueError, TypeError])
+    def test_exception_while_running_query_returns_500(self, client, monkeypatch, exception):
+        def fail(self, **kwargs):
+            raise exception("Backend failure")
+
+        monkeypatch.setattr(DjangoBackendAdapter, "get_things", fail)
+        response = client.get("/Things")
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Internal server error"

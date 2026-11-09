@@ -198,6 +198,7 @@ class TestCreateObservations:
         rows = [[self.T1, 1.0, self.T1, str(foi.id)]] * 3
         response = client.post("/CreateObservations", [self._group(ds, rows)])
         assert response.status_code == 400
+        assert response.json()["detail"] == "Request contains 3 observations; maximum allowed is 2."
 
     @override_settings(SENSORTHINGS_V1_1_MAX_POST_DATA_ARRAY_OBSERVATIONS=4)
     def test_total_rows_across_groups_above_limit_returns_400(self, client):

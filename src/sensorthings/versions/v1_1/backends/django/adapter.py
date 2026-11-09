@@ -7,12 +7,17 @@ from datetime import datetime, timezone
 from odata_query import ast as odata_ast
 from odata_query.ast import _Node  # noqa
 from odata_query.django.django_q import AstToDjangoQVisitor
+from odata_query.django.django_q_ext import NotEqual
+from odata_query.exceptions import ODataException
+from ninja.errors import HttpError
+from django.core.exceptions import FieldError
 from django.http import HttpRequest
 from django.db import transaction as django_transaction
 from django.db.models import QuerySet, Manager, Count, F, Window, Model
 from django.db.models.functions import RowNumber
 from django.db.models.expressions import OrderBy
 from pydantic.alias_generators import to_snake
+from sensorthings.http import InvalidQueryError
 from sensorthings.types import Absent, OrderByField, OrderByDirection
 from sensorthings.versions.v1_1.conf import app_settings
 from sensorthings.versions.v1_1.dto import (EntityResultSetDTO, CollectionDTO, ThingDTO, LocationDTO,
@@ -27,6 +32,17 @@ ODATA_FIELD_REMAP = {
     "phenomenon_time": "phenomenon_time_begin",
     "valid_time": "valid_time_begin",
 }
+
+
+def _not_equal_as_sql(self, compiler, connection):
+    lhs, lhs_params = self.process_lhs(compiler, connection)
+    rhs, rhs_params = self.process_rhs(compiler, connection)
+    return "%s <> %s" % (lhs, rhs), (*lhs_params, *rhs_params)
+
+
+# TODO: Remove once odata-query supports Django 6.0, and require that version.
+# odata-query's `ne` lookup concatenates params that Django 6.0 can return as a tuple and a list.
+NotEqual.as_sql = _not_equal_as_sql
 
 
 class ODataToDjangoQVisitor(AstToDjangoQVisitor):
@@ -117,9 +133,16 @@ class DjangoBaseBackendAdapter:
         use a standard groupby on the field value.
         """
 
-        q = self.build_entity_filter_arg(model=manager.model, filters=filters)
-        if q is not None:
-            manager = manager.filter(q)
+        try:
+            q = self.build_entity_filter_arg(model=manager.model, filters=filters)
+            if q is not None:
+                manager = manager.filter(q)
+        except ODataException as e:
+            raise InvalidQueryError(f"Invalid $filter: {e}") from e
+        except FieldError as e:
+            raise InvalidQueryError("Invalid $filter: unknown property") from e
+        except TypeError as e:
+            raise InvalidQueryError("Invalid $filter: expression must be a boolean condition") from e
 
         lower_page_index, upper_page_index = self.get_pagination_indices(top, skip)
 
@@ -861,13 +884,13 @@ class DjangoBackendAdapter(
             }
 
             if "thing_id" in fields and not Thing.objects.filter(pk=fields["thing_id"]).exists():
-                raise ValueError(f"Thing with id {fields['thing_id']} does not exist.")
+                raise HttpError(400, f"Thing with id {fields['thing_id']} does not exist.")
             if "sensor_id" in fields and not Sensor.objects.filter(pk=fields["sensor_id"]).exists():
-                raise ValueError(f"Sensor with id {fields['sensor_id']} does not exist.")
+                raise HttpError(400, f"Sensor with id {fields['sensor_id']} does not exist.")
             if "observed_property_id" in fields and not ObservedProperty.objects.filter(
                 pk=fields["observed_property_id"]
             ).exists():
-                raise ValueError(f"ObservedProperty with id {fields['observed_property_id']} does not exist.")
+                raise HttpError(400, f"ObservedProperty with id {fields['observed_property_id']} does not exist.")
 
             if fields:
                 if not Datastream.objects.filter(pk=entity_id).update(**fields):

@@ -81,6 +81,14 @@ class TestUpdateDatastream:
         )
         assert response.status_code == 404
 
+    @pytest.mark.parametrize("relation", ["Thing", "Sensor", "ObservedProperty"])
+    def test_returns_400_with_message_for_missing_relation(self, client, relation):
+        ds = create_test_datastream()
+        missing_id = "00000000-0000-0000-0000-000000000000"
+        response = client.patch(f"/Datastreams('{ds.id}')", {relation: {"@iot.id": missing_id}})
+        assert response.status_code == 400
+        assert response.json()["detail"] == f"{relation} with id {missing_id} does not exist."
+
 
 class TestUpdateObservation:
 

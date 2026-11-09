@@ -7,7 +7,7 @@ from pydantic.alias_generators import to_snake
 from sensorthings.core.protocol import BaseProtocol
 from sensorthings.types import Absent, EntityType
 from sensorthings.http import (build_self_link, build_nav_link, build_next_link, validate_select, validate_expand,
-                               validate_orderby, validate_filters)
+                               validate_orderby, validate_filters, InvalidQueryError)
 
 
 class SensorThingsService:
@@ -662,7 +662,7 @@ class SensorThingsService:
 
         if selected_property or ref_only or value_only:
             if any({filters, count, orderby, skip, top, select, expand}):
-                raise ValueError
+                raise InvalidQueryError("Query options are not allowed on property, $value, or $ref paths")
 
             if selected_property:
                 select = selected_property

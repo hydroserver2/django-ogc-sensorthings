@@ -4,10 +4,13 @@ from odata_query.grammar import ODataParser, ODataLexer
 from odata_query.ast import _Node  # noqa
 from sensorthings.types import EntityType, OrderByField, OrderByDirection
 from sensorthings.core import BaseProtocol
+from .response import InvalidQueryError
 
 
 lexer = ODataLexer()
 parser = ODataParser()
+
+EXPAND_OPTIONS = {"filter", "select", "expand", "orderby", "skip", "top", "count"}
 
 
 def validate_select(
@@ -58,7 +61,7 @@ def validate_select(
     ]
 
     if invalid_fields:
-        raise ValueError(
+        raise InvalidQueryError(
             f"Invalid fields in $select: {', '.join(invalid_fields)}"
         )
 
@@ -91,13 +94,13 @@ def tokenize_expand(
         if char == "/":
             token_has_nested = True
             if paren_depth == 0 and token_has_params:
-                raise ValueError(f"Nested expand after parameters is invalid: {''.join(token_chars)}{char}")
+                raise InvalidQueryError(f"Nested expand after parameters is invalid: {''.join(token_chars)}{char}")
         if char == "(" or char == ")":
             token_has_params = True
             if token_has_nested:
-                raise ValueError(f"Parameters after nested expand is invalid: {''.join(token_chars)}{char}")
+                raise InvalidQueryError(f"Parameters after nested expand is invalid: {''.join(token_chars)}{char}")
         if paren_depth < 0:
-            raise ValueError(f"Unexpected closing parenthesis at: {''.join(token_chars)}{char}")
+            raise InvalidQueryError(f"Unexpected closing parenthesis at: {''.join(token_chars)}{char}")
 
         if char == "(":
             paren_depth += 1
@@ -138,7 +141,7 @@ def tokenize_expand(
             tokens[entity] = token_params
 
     if paren_depth != 0:
-        raise ValueError
+        raise InvalidQueryError("Opening and closing parentheses must be balanced")
 
     return tokens
 
@@ -165,7 +168,7 @@ def split_top_level(
             elif char == close_char:
                 depth -= 1
                 if depth < 0:
-                    raise ValueError("Closing character cannot precede opening character")
+                    raise InvalidQueryError("Closing character cannot precede opening character")
             elif char == delimiter and depth == 0:
                 tokens.append("".join(token_chars))
                 token_chars.clear()
@@ -174,7 +177,7 @@ def split_top_level(
         token_chars.append(char)
 
     if depth != 0:
-        raise ValueError("Opening and closing characters must be balanced")
+        raise InvalidQueryError("Opening and closing characters must be balanced")
 
     if token_chars:
         tokens.append("".join(token_chars))
@@ -209,20 +212,29 @@ def validate_expand(
         nested_tokens = split_top_level(expand_token, "/")
         entity, _, param_string = nested_tokens[0].partition("(")
         param_string = param_string[:-1] if param_string else None
-        params = {
-            to_snake(param_token.split("=")[0].lstrip("$")): "=".join(param_token.split("=")[1:])
-            for param_token in split_top_level(param_string, ";")
-        } if param_string else {}
+        params = {}
 
-        # `get_collection` takes the $filter option as `filters`.
-        if "filter" in params:
-            params["filters"] = params.pop("filter")
+        for param_token in split_top_level(param_string, ";") if param_string else []:
+            option, _, value = param_token.partition("=")
+            argument = to_snake(option.lstrip("$"))
+
+            if argument not in EXPAND_OPTIONS:
+                raise InvalidQueryError(f"Invalid option in $expand: {option}")
+
+            params["filters" if argument == "filter" else argument] = value
+
+        for argument in ("top", "skip"):
+            if argument in params:
+                try:
+                    params[argument] = int(params[argument])
+                except ValueError:
+                    raise InvalidQueryError(f"Invalid ${argument} in $expand: '{params[argument]}'")
 
         if len(nested_tokens) > 1:
             params["expand"] = "/".join(nested_tokens[1:])
 
         if entity not in allowed_entities:
-            raise ValueError(f"Invalid entity in $expand: {entity}")
+            raise InvalidQueryError(f"Invalid entity in $expand: {entity}")
 
         validated_expand[entity] = params
 
@@ -258,7 +270,7 @@ def validate_orderby(
         tokens = segment.split()
 
         if len(tokens) not in (1, 2):
-            raise ValueError(f"Invalid $orderby segment: '{segment}'")
+            raise InvalidQueryError(f"Invalid $orderby segment: '{segment}'")
 
         # ------------------------------------------------------------------
         # Resolve sort direction
@@ -271,7 +283,7 @@ def validate_orderby(
             try:
                 direction = OrderByDirection(tokens[1].lower())
             except ValueError:
-                raise ValueError(f"Invalid $orderby direction: '{segment}'")
+                raise InvalidQueryError(f"Invalid $orderby direction: '{segment}'")
 
         # ------------------------------------------------------------------
         # Validate field path
@@ -280,7 +292,7 @@ def validate_orderby(
         field_path = field_token.split("/")
 
         if not validate_field_path(entity_type, field_path, protocol):
-            raise ValueError(f"Invalid $orderby field path: '{field_token}'")
+            raise InvalidQueryError(f"Invalid $orderby field path: '{field_token}'")
 
         parsed_orderby.append(
             OrderByField(
@@ -307,7 +319,7 @@ def validate_filters(filters: str | None = None) -> _Node | None:
     try:
         return parser.parse(lexer.tokenize(filters.strip()))
     except ODataException as e:
-        raise ValueError(f"Invalid $filter: {str(e)}")
+        raise InvalidQueryError(f"Invalid $filter: {str(e)}")
 
 
 def validate_field_path(

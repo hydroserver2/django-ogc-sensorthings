@@ -41,6 +41,10 @@ delete_entity_error_responses: dict[int, type[str]] = {
 }
 
 
+class InvalidQueryError(ValueError):
+    """A query option in the request is invalid. The message is returned to the client."""
+
+
 def http_error(exception: Exception) -> HttpError:
     """Map a Python exception to an HTTP error response."""
 
@@ -48,8 +52,8 @@ def http_error(exception: Exception) -> HttpError:
 
     if isinstance(exception, HttpError):
         return exception
-    elif isinstance(exception, (ValueError, TypeError)):
-        return HttpError(400, "Bad request")
+    elif isinstance(exception, InvalidQueryError):
+        return HttpError(400, str(exception))
     elif isinstance(exception, PermissionError):
         return HttpError(403, "Permission denied")
     elif isinstance(exception, LookupError):

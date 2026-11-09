@@ -160,6 +160,20 @@ Each entity type has four operations: `get_*`, `create_*`, `update_*`, and `dele
 SENSORTHINGS_V1_1_BACKEND_ADAPTER = "myapp.adapters.MyBackendAdapter"
 ```
 
+### Error Handling
+
+Adapter methods signal HTTP errors by raising one of these exceptions:
+
+| Exception | Response |
+|---|---|
+| `ninja.errors.HttpError(status, message)` | The given status and message |
+| `PermissionError` | 403 |
+| `LookupError` | 404 |
+| `NotImplementedError` | 501 |
+| Any other exception, including `ValueError` and `TypeError` | 500 |
+
+To reject a request as a client error, raise `HttpError(400, "...")`. The message is returned to the client.
+
 ### Operation Signatures
 
 **`get_*`** — fetch a collection of entities:
