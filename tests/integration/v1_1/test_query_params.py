@@ -503,3 +503,125 @@ class TestJsonPropertyFilter:
         response = client.get(f"/Datastreams?$filter={filter_option}")
         assert response.status_code == 400
         assert message in response.json()["detail"]
+
+
+class TestJsonFunctionFilter:
+
+    PROPERTIES = {
+        "plain": {
+            "note": "plain",
+            "otherNote": "pl",
+            "nested": {"innerKey": "deep"},
+            "count": 5,
+            "ratio": 2.5,
+            "when": "2020-03-04T05:06:07Z",
+        },
+        "other": {"note": "other", "count": 12, "when": "not-a-date"},
+        "zed": {"note": "Zed"},
+        "quote": {"note": 'pl"x'},
+        "spaced": {"note": "  pad  "},
+        "nonstr": {"note": 123},
+        "offset": {"when": "2021-06-15T23:30:00+02:00"},
+        "empty": {},
+        "no_properties": None,
+    }
+    THING_PROPERTIES = {"siteName": "Alpha", "siteCount": 3, "meta": {"depth": 7}}
+
+    @classmethod
+    def create_datastreams(cls):
+        thing = create_test_thing(properties=cls.THING_PROPERTIES)
+        for name, properties in cls.PROPERTIES.items():
+            create_test_datastream(name=name, properties=properties, thing=thing if name == "plain" else None)
+        return thing
+
+    @pytest.mark.parametrize("filter_option,expected", [
+        # String functions
+        ("length(properties/note) eq 5", ["other", "plain"]),
+        ("length(properties/count) eq 1", ["plain"]),
+        ("tolower(properties/note) eq 'zed'", ["zed"]),
+        ("toupper(properties/note) eq 'ZED'", ["zed"]),
+        ("trim(properties/note) eq 'pad'", ["spaced"]),
+        ("startswith(properties/note,'pl')", ["plain", "quote"]),
+        ("endswith(properties/note,'in')", ["plain"]),
+        ("contains(properties/note,'la')", ["plain"]),
+        ("contains(properties/note,'\"')", ["quote"]),
+        ("contains(properties/note,'12')", ["nonstr"]),
+        ("contains(properties/note,properties/otherNote)", ["plain"]),
+        ("indexof(properties/note,'la') eq 1", ["plain"]),
+        ("substring(properties/note,1) eq 'lain'", ["plain"]),
+        ("substring(properties/note,1,2) eq 'la'", ["plain"]),
+        ("matchesPattern(properties/note,'^pl')", ["plain", "quote"]),
+        ("tolower(trim(properties/note)) eq 'pad'", ["spaced"]),
+        ("startswith(tolower(properties/note),'z')", ["zed"]),
+        # concat
+        ("concat(properties/note,'x') eq 'plainx'", ["plain"]),
+        ("concat('x',properties/note) eq 'xplain'", ["plain"]),
+        ("concat(concat(properties/note,'-'),'x') eq 'plain-x'", ["plain"]),
+        ("concat(name,'x') eq 'plainx'", ["plain"]),
+        ("concat(description,'!') eq 'This is a datastream used for testing.!' and name eq 'plain'", ["plain"]),
+        # Numeric functions
+        ("round(properties/ratio) eq 3", ["plain"]),
+        ("floor(properties/ratio) eq 2", ["plain"]),
+        ("ceiling(properties/ratio) eq 3", ["plain"]),
+        ("floor(properties/count) eq 5", ["plain"]),
+        ("round(properties/note) eq 3", []),
+        # Date functions
+        ("year(properties/when) eq 2020", ["plain"]),
+        ("month(properties/when) eq 3", ["plain"]),
+        ("day(properties/when) eq 4", ["plain"]),
+        ("hour(properties/when) eq 5", ["plain"]),
+        ("minute(properties/when) eq 6", ["plain"]),
+        ("second(properties/when) eq 7", ["plain"]),
+        ("date(properties/when) eq 2020-03-04", ["plain"]),
+        ("time(properties/when) eq 05:06:07", ["plain"]),
+        ("year(properties/when) eq 2021", ["offset"]),
+        ("hour(properties/when) eq 21", ["offset"]),
+        ("year(properties/note) eq 2020", []),
+        # Arithmetic
+        ("properties/count add 1 eq 6", ["plain"]),
+        ("properties/count sub 1 eq 4", ["plain"]),
+        ("properties/ratio mul 2 eq 5.0", ["plain"]),
+        ("properties/count add properties/ratio gt 7", ["plain"]),
+        ("properties/note add 1 eq 2", []),
+        # Functions on the right side of a comparison
+        ("properties/note eq tolower('PLAIN')", ["plain"]),
+        ("properties/note ne tolower('PLAIN')", ["nonstr", "other", "quote", "spaced", "zed"]),
+        # Nested keys and related entities
+        ("length(properties/nested/innerKey) eq 4", ["plain"]),
+        ("startswith(properties/nested/innerKey,'de')", ["plain"]),
+        ("length(Thing/properties/siteName) eq 5", ["plain"]),
+        ("startswith(Thing/properties/siteName,'Al')", ["plain"]),
+        ("concat(Thing/properties/siteName,'x') eq 'Alphax'", ["plain"]),
+        ("Thing/properties/siteCount gt 1", ["plain"]),
+        ("Thing/properties/siteCount lt 1", []),
+        ("Thing/properties/siteName gt 'A'", ["plain"]),
+        ("Thing/properties/meta/depth gt 1", ["plain"]),
+        # Columns that are not JSON
+        ("length(name) eq 13", ["no_properties"]),
+        ("contains(name,'la')", ["plain"]),
+    ])
+    def test_filter(self, client, filter_option, expected):
+        self.create_datastreams()
+        response = client.get(f"/Datastreams?$filter={filter_option}")
+        assert response.status_code == 200
+        assert sorted(ds["name"] for ds in response.json()["value"]) == expected
+
+    def test_function_on_whole_json_field_succeeds(self, client):
+        self.create_datastreams()
+        assert client.get("/Datastreams?$filter=length(properties) eq 1").status_code == 200
+
+    def test_function_inside_expand(self, client):
+        thing = self.create_datastreams()
+        body = client.get(f"/Things('{thing.id}')?$expand=Datastreams($filter=length(properties/note) eq 5)").json()
+        assert [ds["name"] for ds in body["Datastreams"]] == ["plain"]
+
+    def test_date_function_on_column(self, client):
+        ds = create_test_datastream()
+        create_test_observation(
+            result=1.0, datastream=ds, phenomenon_time_begin=datetime(2020, 1, 1, tzinfo=timezone.utc)
+        )
+        create_test_observation(
+            result=2.0, datastream=ds, phenomenon_time_begin=datetime(2021, 1, 1, tzinfo=timezone.utc)
+        )
+        body = client.get("/Observations?$filter=year(phenomenonTime) eq 2020").json()
+        assert [obs["result"] for obs in body["value"]] == [1.0]

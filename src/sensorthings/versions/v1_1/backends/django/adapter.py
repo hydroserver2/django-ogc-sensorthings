@@ -14,9 +14,9 @@ from django.core.exceptions import FieldDoesNotExist, FieldError
 from django.http import HttpRequest
 from django.db import transaction as django_transaction
 from django.db.models import (QuerySet, Manager, Count, F, Window, Model, Q, Case, When, Value, FloatField, TextField,
-                              JSONField)
-from django.db.models.fields.json import KT
-from django.db.models.functions import Cast, RowNumber
+                              JSONField, CharField, DateTimeField, ExpressionWrapper)
+from django.db.models.fields.json import KeyTextTransform, KeyTransform
+from django.db.models.functions import Cast, Concat, RowNumber
 from django.db.models.expressions import OrderBy
 from pydantic.alias_generators import to_snake
 from sensorthings.http import InvalidQueryError
@@ -36,6 +36,14 @@ ODATA_FIELD_REMAP = {
 }
 
 JSON_NUMBER_PATTERN = r"^-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$"
+JSON_DATETIME_PATTERN = (
+    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2}(\.[0-9]+)?)?(Z|[-+][0-9]{2}:[0-9]{2})?$"
+)
+JSON_FUNCTION_TYPES = {
+    "round": "number", "floor": "number", "ceiling": "number",
+    "year": "datetime", "month": "datetime", "day": "datetime", "hour": "datetime",
+    "minute": "datetime", "second": "datetime", "date": "datetime", "time": "datetime",
+}
 
 
 def _not_equal_as_sql(self, compiler, connection):
@@ -52,16 +60,19 @@ NotEqual.as_sql = _not_equal_as_sql
 class ODataToDjangoQVisitor(AstToDjangoQVisitor):
     """Extends AstToDjangoQVisitor to translate OData camelCase field names to Django snake_case."""
 
-    def visit_Identifier(self, node: odata_ast.Identifier) -> F:
-        name = ODATA_FIELD_REMAP.get(to_snake(node.name), to_snake(node.name))
-        return F(name)
+    _json_mode = None
 
-    def visit_Attribute(self, node: odata_ast.Attribute) -> F:
-        owner = self.visit(node.owner)
-        if self._is_json_path(owner.name):
-            return F(owner.name + "__" + node.attr)
-        attr = ODATA_FIELD_REMAP.get(to_snake(node.attr), to_snake(node.attr))
-        return F(owner.name + "__" + attr)
+    def visit_Attribute(self, node: odata_ast.Attribute):
+        return self._json_value(self._field_path(node), self._json_mode)
+
+    visit_Identifier = visit_Attribute
+
+    def visit_BinOp(self, node: odata_ast.BinOp):
+        return self._with_json_mode("number", super().visit_BinOp, node)
+
+    def visit_Call(self, node: odata_ast.Call):
+        mode = JSON_FUNCTION_TYPES.get(node.func.full_name().lower(), "text")
+        return self._with_json_mode(mode, super().visit_Call, node)
 
     def visit_Compare(self, node: odata_ast.Compare):
         if (
@@ -69,25 +80,82 @@ class ODataToDjangoQVisitor(AstToDjangoQVisitor):
             and isinstance(node.right, odata_ast._Literal)  # noqa
         ):
             path = self.visit(node.left).name
-            if self._is_json_path(path):
+            if self._json_keys(path) is not None:
                 return self._compare_json(path, node.comparator, node.right)
+
+        if isinstance(node.left, odata_ast.Attribute) and isinstance(node.right, odata_ast.Call):
+            path = self.visit(node.left).name
+            if self._json_keys(path):
+                return self.visit(node.comparator)(self._json_text(path), self.visit(node.right))
 
         return super().visit_Compare(node)
 
-    def _is_json_path(self, path: str) -> bool:
-        """Return whether a Django field path reaches a JSONField."""
+    def djangofunc_concat(self, *args: odata_ast._Node) -> Concat:  # noqa
+        return Concat(*[self.visit(arg) for arg in args], output_field=TextField())
+
+    def _with_json_mode(self, mode: str, visit: Callable, node: odata_ast._Node):  # noqa
+        """Visit a node with JSON values extracted according to the given mode."""
+
+        previous, self._json_mode = self._json_mode, mode
+        result = visit(node)
+        self._json_mode = previous
+
+        return result
+
+    def _field_path(self, node: odata_ast._Node) -> str:  # noqa
+        """Build a Django field path from an OData identifier or attribute."""
+
+        if isinstance(node, odata_ast.Identifier):
+            return ODATA_FIELD_REMAP.get(to_snake(node.name), to_snake(node.name))
+
+        owner = self._field_path(node.owner)
+        if self._json_keys(owner) is not None:
+            return owner + "__" + node.attr
+
+        return owner + "__" + ODATA_FIELD_REMAP.get(to_snake(node.attr), to_snake(node.attr))
+
+    def _json_keys(self, path: str) -> list[str] | None:
+        """Return the keys below a JSONField in a Django field path, or None if it doesn't reach one."""
 
         model = self.root_model
+        parts = path.split("__")
 
-        for part in path.split("__"):
+        for index, part in enumerate(parts):
             field = model._meta.get_field(part)  # noqa
             if isinstance(field, JSONField):
-                return True
+                return parts[index + 1:]
             if not field.is_relation:
-                return False
+                return None
             model = field.related_model
 
-        return False
+        return None
+
+    def _json_text(self, path: str):
+        """Extract the text of a JSON value, supporting nested keys and related entities."""
+
+        keys = self._json_keys(path)
+        if not keys:
+            return Cast(F(path), TextField())
+
+        expression = F("__".join(path.split("__")[:-len(keys)]))
+        for key in keys[:-1]:
+            expression = KeyTransform(key, expression)
+
+        return ExpressionWrapper(KeyTextTransform(keys[-1], expression), output_field=CharField())
+
+    def _json_value(self, path: str, mode: str | None):
+        """Return a field reference, extracting JSON values as text, numbers, or datetimes according to the mode."""
+
+        if not mode or self._json_keys(path) is None:
+            return F(path)
+        if mode == "text":
+            return self._json_text(path)
+
+        pattern, output_field = (
+            (JSON_NUMBER_PATTERN, FloatField()) if mode == "number" else (JSON_DATETIME_PATTERN, DateTimeField())
+        )
+
+        return Case(When(**{f"{path}__regex": pattern}, then=Cast(self._json_text(path), output_field)))
 
     def _compare_json(self, path: str, comparator: odata_ast._Node, literal: odata_ast._Node):  # noqa
         """Compare a value inside a JSONField with a literal."""
@@ -107,11 +175,9 @@ class ODataToDjangoQVisitor(AstToDjangoQVisitor):
             return matches | ~has_key if value is None else matches
 
         if isinstance(literal, odata_ast.String):
-            return self.visit(comparator)(Cast(KT(path), TextField()), Value(value))
+            return self.visit(comparator)(Cast(self._json_text(path), TextField()), Value(value))
 
-        number = Case(When(**{f"{path}__regex": JSON_NUMBER_PATTERN}, then=Cast(KT(path), FloatField())))
-
-        return self.visit(comparator)(number, Value(value))
+        return self.visit(comparator)(self._json_value(path, "number"), Value(value))
 
 
 class DjangoBaseBackendAdapter:
