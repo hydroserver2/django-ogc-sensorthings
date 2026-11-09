@@ -91,6 +91,12 @@ class ODataToDjangoQVisitor(AstToDjangoQVisitor):
 
         return super().visit_Compare(node)
 
+    def visit_CollectionLambda(self, node: odata_ast.CollectionLambda):
+        result = super().visit_CollectionLambda(node)
+
+        # odata-query passes negated=True to Exists, which Django ignores.
+        return ~result if isinstance(node.operator, odata_ast.All) else result
+
     def djangofunc_concat(self, *args: odata_ast._Node) -> Concat:  # noqa
         return Concat(*[self.visit(arg) for arg in args], output_field=TextField())
 

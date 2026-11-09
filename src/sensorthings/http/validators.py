@@ -7,7 +7,29 @@ from sensorthings.core import BaseProtocol
 from .response import InvalidQueryError
 
 
-lexer = ODataLexer()
+class SensorThingsLexer(ODataLexer):
+    """Stops keywords from matching the start of longer names, such as `nullable`."""
+
+    tokens = ODataLexer.tokens
+
+    @_(r"(?:true|false)\b")  # noqa
+    def BOOLEAN(self, t):
+        return super().BOOLEAN(t)
+
+    @_(r"null\b")  # noqa
+    def NULL(self, t):
+        return super().NULL(t)
+
+    @_(r"any\b")  # noqa
+    def ANY(self, t):
+        return super().ANY(t)
+
+    @_(r"all\b")  # noqa
+    def ALL(self, t):
+        return super().ALL(t)
+
+
+lexer = SensorThingsLexer()
 parser = ODataParser()
 
 EXPAND_OPTIONS = {"filter", "select", "expand", "orderby", "skip", "top", "count"}

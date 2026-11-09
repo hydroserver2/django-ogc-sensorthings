@@ -702,3 +702,120 @@ class TestOrderBy:
         self.create_observations()
         body = client.get("/Observations?$resultFormat=dataArray&$orderby=phenomenonTime&$select=result").json()
         assert body["value"][0]["dataArray"] == [[2.0], [3.0], [1.0]]
+
+
+class TestKeywordPrefixedNames:
+
+    KEYS = ["nullable", "nullValue", "null_x", "null1", "trueFlag", "truest", "falseFlag", "falsey", "anyone", "allowed"]
+
+    @classmethod
+    def create_datastreams(cls):
+        thing = create_test_thing(name="Owner")
+        create_test_datastream(
+            name="match",
+            thing=thing,
+            properties={**{key: "x" for key in cls.KEYS}, "flag": True, "empty": None, "null": "x", "any": "x"},
+        )
+        create_test_datastream(name="other", thing=thing, properties={"flag": False})
+        return thing
+
+    @staticmethod
+    def filtered_names(client, filter_option):
+        response = client.get(f"/Datastreams?$filter={filter_option}")
+        assert response.status_code == 200
+        return sorted(ds["name"] for ds in response.json()["value"])
+
+    @pytest.mark.parametrize("key", KEYS)
+    def test_key_can_be_filtered(self, client, key):
+        self.create_datastreams()
+        assert self.filtered_names(client, f"properties/{key} eq 'x'") == ["match"]
+
+    @pytest.mark.parametrize("filter_option,expected", [
+        ("length(properties/nullable) eq 1", ["match"]),
+        ("startswith(properties/allowed,'x')", ["match"]),
+        ("properties/nullable eq 'x' and properties/flag eq true", ["match"]),
+        ("properties/flag eq true and properties/trueFlag eq 'x'", ["match"]),
+    ])
+    def test_key_in_expression(self, client, filter_option, expected):
+        self.create_datastreams()
+        assert self.filtered_names(client, filter_option) == expected
+
+    def test_key_inside_expand(self, client):
+        thing = self.create_datastreams()
+        body = client.get(f"/Things('{thing.id}')?$expand=Datastreams($filter=properties/nullable eq 'x')").json()
+        assert [ds["name"] for ds in body["Datastreams"]] == ["match"]
+
+    @pytest.mark.parametrize("lambda_filter", [
+        "Datastreams/any(d:d/properties/nullable eq 'x')",
+        "Datastreams/any(allVar:allVar/name eq 'match')",
+    ])
+    def test_name_inside_lambda(self, client, lambda_filter):
+        self.create_datastreams()
+        response = client.get(f"/Things?$filter={lambda_filter}")
+        assert response.status_code == 200
+        assert [thing["name"] for thing in response.json()["value"]] == ["Owner"]
+
+    @pytest.mark.parametrize("filter_option,expected", [
+        ("properties/flag eq true", ["match"]),
+        ("properties/flag eq false", ["other"]),
+        ("properties/empty eq null", ["match", "other"]),
+        ("name ne null", ["match", "other"]),
+    ])
+    def test_literals_still_work(self, client, filter_option, expected):
+        self.create_datastreams()
+        assert self.filtered_names(client, filter_option) == expected
+
+    @pytest.mark.parametrize("operator", ["any", "all"])
+    def test_collection_operators_still_parse(self, client, operator):
+        self.create_datastreams()
+        assert client.get(f"/Things?$filter=Datastreams/{operator}(d:d/name eq 'match')").status_code == 200
+
+    @pytest.mark.parametrize("key", ["null", "any"])
+    def test_exact_keyword_key_is_rejected(self, client, key):
+        self.create_datastreams()
+        response = client.get(f"/Datastreams?$filter=properties/{key} eq 'x'")
+        assert response.status_code == 400
+        assert "Invalid $filter" in response.json()["detail"]
+
+
+class TestCollectionOperators:
+
+    @staticmethod
+    def create_things():
+        mixed = create_test_thing(name="mixed")
+        create_test_datastream(thing=mixed, name="match")
+        create_test_datastream(thing=mixed, name="other")
+        all_match = create_test_thing(name="allmatch")
+        create_test_datastream(thing=all_match, name="match")
+        no_match = create_test_thing(name="nomatch")
+        create_test_datastream(thing=no_match, name="other")
+        create_test_thing(name="empty")
+        create_test_location(name="Keep", things=[mixed, all_match])
+        create_test_location(name="Drop", things=[mixed])
+        return all_match, mixed
+
+    @pytest.mark.parametrize("filter_option,expected", [
+        ("Datastreams/all(d:d/name eq 'match')", ["allmatch", "empty"]),
+        ("Datastreams/all(d:d/name ne 'match')", ["empty", "nomatch"]),
+        ("Datastreams/any(d:d/name eq 'match')", ["allmatch", "mixed"]),
+        ("not Datastreams/all(d:d/name eq 'match')", ["mixed", "nomatch"]),
+        ("not Datastreams/any(d:d/name eq 'match')", ["empty", "nomatch"]),
+        ("Datastreams/all(d:d/name eq 'match') and name eq 'allmatch'", ["allmatch"]),
+        ("Datastreams/all(d:d/name eq 'match') or name eq 'nomatch'", ["allmatch", "empty", "nomatch"]),
+        ("Datastreams/all(d:d/name eq 'match') and Datastreams/any()", ["allmatch"]),
+        ("Datastreams/all(d:contains(d/name,'mat'))", ["allmatch", "empty"]),
+        ("Datastreams/all(d:d/Thing/name eq 'allmatch')", ["allmatch", "empty"]),
+        ("Locations/all(l:l/name eq 'Keep')", ["allmatch", "empty", "nomatch"]),
+    ])
+    def test_filter(self, client, filter_option, expected):
+        self.create_things()
+        response = client.get(f"/Things?$filter={filter_option}")
+        assert response.status_code == 200
+        assert sorted(thing["name"] for thing in response.json()["value"]) == expected
+
+    def test_all_inside_expand(self, client):
+        self.create_things()
+        body = client.get(
+            "/Locations?$filter=name eq 'Keep'&$expand=Things($filter=Datastreams/all(d:d/name eq 'match'))"
+        ).json()
+        assert [thing["name"] for thing in body["value"][0]["Things"]] == ["allmatch"]
